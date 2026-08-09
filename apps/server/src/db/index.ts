@@ -55,6 +55,7 @@ for (const ddl of [
   "ALTER TABLE reminders ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE reminders ADD COLUMN last_attempt_at TEXT",
   "ALTER TABLE reminders ADD COLUMN acked_at TEXT",
+  "ALTER TABLE chat_history ADD COLUMN payload TEXT",
 ]) {
   try {
     sqlite.exec(ddl);

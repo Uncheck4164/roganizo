@@ -42,7 +42,11 @@ export const googleTokens = sqliteTable("google_tokens", {
 
 export const chatHistory = sqliteTable("chat_history", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  role: text("role").notNull(), // user | assistant
+  role: text("role").notNull(), // user | assistant | tool
   content: text("content").notNull(),
   createdAt: text("created_at").notNull(),
+  // Mensaje completo en formato OpenAI (incluye tool_calls y sus resultados).
+  // Sin esto el modelo solo veía "pedido → texto de éxito" y aprendía a
+  // saltarse las tools afirmando que ya las había ejecutado.
+  payload: text("payload"),
 });

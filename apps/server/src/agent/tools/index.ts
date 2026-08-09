@@ -294,11 +294,29 @@ export interface PendingRequest {
   summary: string;
 }
 
+/** Tools que cambian algo. Si el modelo dice "listo" sin haber llamado ninguna, mintió. */
+export const MUTATING_TOOLS = new Set([
+  "create_event",
+  "update_event",
+  "delete_event",
+  "propose_batch",
+  "create_task",
+  "complete_task",
+  "delete_task",
+  "create_note",
+  "update_note",
+  "delete_note",
+  "create_reminder",
+  "delete_reminder",
+]);
+
 export interface ToolContext {
   /** true cuando se está ejecutando un batch ya confirmado por el usuario */
   confirmed?: boolean;
   /** confirmaciones creadas durante el run del agente (el bot les pone botones) */
   pending: PendingRequest[];
+  /** nombres de tools mutantes efectivamente ejecutadas en este turno */
+  mutated?: string[];
 }
 
 const now = () => new Date().toISOString();
@@ -324,6 +342,7 @@ export async function executeTool(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<unknown> {
+  if (MUTATING_TOOLS.has(name)) (ctx.mutated ??= []).push(name);
   switch (name) {
     case "get_events":
       return calendar.listEvents(String(args.from), String(args.to));
