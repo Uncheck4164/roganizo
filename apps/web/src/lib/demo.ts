@@ -11,20 +11,20 @@ interface Slot {
   room?: string;
 }
 
+// Horario 100% ficticio (el del mockup de diseño), sin relación con datos reales.
 const SCHEDULE: Slot[] = [
-  { dow: 1, s: "09:30", e: "10:50", title: "Gestión de Proyectos", room: "LC-48" },
-  { dow: 1, s: "11:00", e: "12:20", title: "Empleabilidad", room: "SH-45" },
-  { dow: 2, s: "11:00", e: "12:20", title: "Ciencia de Datos", room: "LC-48" },
-  { dow: 2, s: "16:30", e: "17:30", title: "Estudiar" },
-  { dow: 3, s: "09:30", e: "10:50", title: "Gestión de Proyectos", room: "LC-48" },
-  { dow: 3, s: "11:00", e: "12:20", title: "Consultoría Informática", room: "LC-48" },
-  { dow: 3, s: "12:30", e: "13:50", title: "Cálculo III", room: "SH-31" },
-  { dow: 3, s: "17:40", e: "19:00", title: "Inglés III", room: "E35" },
-  { dow: 4, s: "09:30", e: "10:50", title: "Ciencia de Datos", room: "L35" },
-  { dow: 4, s: "14:00", e: "15:20", title: "Arquitectura de Software", room: "LC-48" },
-  { dow: 4, s: "15:30", e: "16:50", title: "Consultoría Informática", room: "LC-44" },
-  { dow: 5, s: "08:40", e: "10:50", title: "Cálculo III", room: "SC-39" },
-  { dow: 5, s: "11:00", e: "12:20", title: "Arquitectura de Software", room: "LC-48" },
+  { dow: 1, s: "08:00", e: "09:00", title: "Ciencias", room: "A-101" },
+  { dow: 1, s: "09:00", e: "10:00", title: "Matemática", room: "A-102" },
+  { dow: 1, s: "11:00", e: "12:00", title: "Historia", room: "B-201" },
+  { dow: 2, s: "15:00", e: "16:30", title: "Biología", room: "Lab 2" },
+  { dow: 2, s: "16:30", e: "16:50", title: "Almuerzo" },
+  { dow: 2, s: "16:50", e: "18:20", title: "Estudiar" },
+  { dow: 3, s: "10:00", e: "11:00", title: "Física", room: "C-301" },
+  { dow: 3, s: "12:00", e: "13:00", title: "Música", room: "Aula Magna" },
+  { dow: 4, s: "08:00", e: "09:00", title: "Ciencias", room: "A-101" },
+  { dow: 4, s: "14:00", e: "15:30", title: "Inglés", room: "B-105" },
+  { dow: 5, s: "09:00", e: "10:00", title: "Matemática", room: "A-102" },
+  { dow: 5, s: "11:00", e: "12:30", title: "Arte", room: "Taller 1" },
   { dow: 6, s: "10:00", e: "11:00", title: "Gimnasio" },
 ];
 
