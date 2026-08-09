@@ -125,7 +125,7 @@ const NOTES: ApiNote[] = [
 
 const REMINDERS = [
   { id: 1, message: "📞 Hablar con el profesor por la bibliografía", fireAt: daysFromNow(1) },
-  { id: 2, message: "💧 Prueba de Cálculo — repasar antes", fireAt: daysFromNow(4) },
+  { id: 2, message: "📚 Prueba de Matemática — repasar antes", fireAt: daysFromNow(4) },
 ];
 
 function stats(): ApiStats {
