@@ -1,0 +1,67 @@
+/* Estilos globales del diseño "Roganizo Web A" */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg, #171b1f);
+  -webkit-font-smoothing: antialiased;
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-weight: 300;
+}
+a { color: var(--accent, #a9c6bd); text-decoration: none; }
+a:hover { filter: brightness(1.15); }
+
+.fc { font-family: 'Outfit', system-ui, sans-serif; }
+.fc .fc-toolbar { margin-bottom: 1.2em !important; gap: 12px; flex-wrap: wrap; }
+.fc .fc-toolbar-title { font-size: 19px; font-weight: 300; letter-spacing: -0.01em; color: var(--fg); }
+.fc .fc-button { font-size: 13px; font-weight: 400; text-transform: none; border-radius: 999px; padding: 7px 15px; box-shadow: none !important; transition: background .2s ease, color .2s ease; }
+.fc .fc-button-group .fc-button { border-radius: 999px !important; margin: 0 2px; }
+.fc .fc-button-primary { background: var(--chip) !important; border-color: transparent !important; color: var(--btn-fg) !important; }
+.fc .fc-button-primary:hover { background: var(--chip-strong) !important; color: var(--fg) !important; }
+.fc .fc-button-primary:disabled { background: var(--chip) !important; color: var(--btn-fg) !important; opacity: .4 !important; }
+.fc .fc-button-primary.fc-button-active { background: var(--fg) !important; color: var(--bg) !important; }
+.fc .fc-button-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fc .fc-col-header-cell-cushion { font-size: 12.5px; font-weight: 400; padding: 12px 6px; text-transform: capitalize; color: var(--fg); }
+.fc .fc-daygrid-day-number { font-size: 12.5px; font-weight: 300; padding: 8px; color: var(--fg); }
+.fc .fc-timegrid-slot-label-cushion { font-size: 11.5px; font-weight: 300; color: var(--btn-fg); }
+.fc .fc-timegrid-slot { height: 62px; }
+.fc .fc-timegrid-body { position: relative; }
+.fc .fc-timegrid-col-events { margin: 0 4px 0 2px; }
+.fc .fc-timegrid-event, .fc .fc-daygrid-event { border-radius: 10px; border: none; padding: 0; box-shadow: none; overflow: hidden; }
+.fc .fc-timegrid-event-harness { margin-right: 3px; }
+.fc .fc-timegrid-event { height: calc(100% - 3px); }
+.fc .fc-event-main { padding: 0; }
+.fc .fc-scrollgrid { border-radius: 14px; overflow: hidden; }
+.fc .fc-event { cursor: pointer; }
+.fc .fc-list-day-cushion { background: var(--chip) !important; }
+.fc .fc-list-event:hover td { background: var(--chip) !important; }
+.fc .fc-list, .fc .fc-list-table td, .fc .fc-list-table th { color: var(--fg); background: transparent; }
+.fc .fc-list-day-text, .fc .fc-list-day-side-text { color: var(--fg) !important; font-weight: 400; text-decoration: none; }
+.fc .fc-list-event-title a { color: var(--fg) !important; text-decoration: none; }
+.fc .fc-list-event-time { color: var(--muted) !important; font-size: 13px; }
+.fc .fc-list-empty { background: transparent; color: var(--muted); }
+.fc .fc-list-table td { border-color: var(--line); }
+
+.rg-ic { width: 17px; height: 17px; flex: none; transition: transform .35s cubic-bezier(.34,1.56,.64,1); }
+.rg-icbtn { transition: background .2s ease; }
+.rg-icbtn:hover .rg-ic { transform: rotate(25deg) scale(1.08); }
+.rg-icbtn:hover .rg-ic-send { transform: translate(2px,-2px); }
+@keyframes rg-pulse { 0% { box-shadow: 0 0 0 0 var(--pulse); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.rg-dot-ok { animation: rg-pulse 2.4s ease-out infinite; }
+
+.rg-ev { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 10px; overflow: hidden; }
+.rg-ev-t { font-size: 13px; font-weight: 400; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rg-ev-time { font-size: 11px; line-height: 1.1; opacity: .75; white-space: nowrap; }
+.fc-timegrid-event-short .rg-ev { padding: 2px 9px; justify-content: center; }
+.fc-timegrid-event-short .rg-ev-t { font-size: 11.5px; }
+.fc-timegrid-event-short .rg-ev-time, .fc-daygrid-event .rg-ev-time { display: none; }
+.rg-stack { position: absolute; right: 7px; bottom: 6px; display: flex; align-items: flex-end; gap: 2px; padding: 3px 5px; border-radius: 6px; background: var(--rg-stack-bg); }
+.fc-timegrid-event-short .rg-stack { padding: 2px 4px; bottom: 3px; right: 5px; }
+.fc-daygrid-event .rg-ev { flex-direction: row; align-items: center; gap: 8px; padding: 4px 8px; }
+.fc-daygrid-event .rg-ev-t { flex: 1; }
+.fc-daygrid-event .rg-stack { position: static; padding: 2px 4px; flex: none; }
+.rg-stack i { display: block; width: 3px; border-radius: 1px; background: currentColor; opacity: .85; }
+.rg-stack i:nth-child(1) { height: 4px; }
+.rg-stack i:nth-child(2) { height: 7px; }
+.rg-stack i:nth-child(3) { height: 10px; }
+.rg-nowline { position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px solid var(--warn); z-index: 6; pointer-events: none; }
+.rg-nowchip { position: absolute; left: 0; top: 0; transform: translateY(-50%); background: var(--warn); color: var(--warn-fg); font-size: 10.5px; font-weight: 400; letter-spacing: .02em; border-radius: 999px; padding: 2px 7px; }

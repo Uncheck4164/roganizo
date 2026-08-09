@@ -1,0 +1,12 @@
+{
+  "name": "roganizo",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm --filter @roganizo/server dev",
+    "dev:web": "pnpm --filter @roganizo/web dev",
+    "build": "pnpm --filter @roganizo/web build && pnpm --filter @roganizo/server build",
+    "start": "pnpm --filter @roganizo/server start",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
