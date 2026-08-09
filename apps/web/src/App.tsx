@@ -46,7 +46,7 @@ function Login({ onOk, theme }: { onOk: () => void; theme: Theme }) {
       >
         <h1 style={{ margin: 0, lineHeight: 0 }}>
           <img
-            src={theme === "dark" ? "/logo-lockup-dark.png" : "/logo-lockup.png"}
+            src={import.meta.env.BASE_URL + (theme === "dark" ? "logo-lockup-dark.png" : "logo-lockup.png")}
             alt="roganizo"
             style={{ height: "34px", width: "auto", display: "block" }}
           />
@@ -168,7 +168,7 @@ export default function App() {
                 <h1 style={{ margin: 0, lineHeight: 0 }}>
                   <img
                     className="rg-logo"
-                    src={theme === "dark" ? "/logo-lockup-dark.png" : "/logo-lockup.png"}
+                    src={import.meta.env.BASE_URL + (theme === "dark" ? "logo-lockup-dark.png" : "logo-lockup.png")}
                     alt="roganizo"
                     style={{ height: "38px", width: "auto", display: "block" }}
                   />

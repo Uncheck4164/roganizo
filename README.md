@@ -5,6 +5,23 @@ tu vida en **Google Calendar**, **Google Tasks**, notas y recordatorios. Incluye
 solo lectura** (calendario, to-dos, notas y stats) protegida por contraseña — toda modificación
 pasa por el bot; nadie más puede tocar nada.
 
+![Roganizo — panel web](docs/screenshot-dark.png)
+
+**🔗 [Demo en vivo](https://uncheck4164.github.io/roganizo/)** — la web con datos ficticios,
+sin backend (el bot y la sincronización real requieren self-hosting).
+
+## Deploy rápido con Docker
+
+```bash
+cp .env.example .env   # completá tus credenciales
+docker build -t roganizo .
+docker run -d --name roganizo --env-file .env -v roganizo-data:/data -p 8080:8080 roganizo
+```
+
+Un solo contenedor: bot + API + web + scheduler. La base SQLite vive en el volumen `/data`.
+¿Dokploy/Coolify/Portainer? Apuntá al repo con Build Type **Dockerfile** y listo
+(guía completa más abajo).
+
 ```
 Telegram ⇄ grammY ⇄ Agente LLM (OpenRouter, tool-calling)
                         ├─ Google Calendar (eventos, RRULE, huecos libres, conflictos)

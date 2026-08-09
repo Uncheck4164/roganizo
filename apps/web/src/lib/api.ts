@@ -41,6 +41,8 @@ export interface ApiStatus {
 export class UnauthorizedError extends Error {}
 
 export async function fetchJson<T>(url: string): Promise<T> {
+  const { DEMO, demoFetch } = await import("./demo");
+  if (DEMO) return demoFetch<T>(url);
   const res = await fetch(url, { credentials: "same-origin" });
   if (res.status === 401) throw new UnauthorizedError("no session");
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
