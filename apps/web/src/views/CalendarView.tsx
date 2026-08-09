@@ -159,6 +159,9 @@ export default function CalendarView({
     background: category(title, theme).bg,
   });
 
+  // Etiqueta de hora que la línea de "ahora" tapa (se oculta para no encimarse)
+  const hiddenLabelRef = useRef<HTMLElement | null>(null);
+
   // Línea de "ahora" sobre la grilla horaria (portado del diseño)
   useEffect(() => {
     const sync = () => {
@@ -190,6 +193,27 @@ export default function CalendarView({
       }
       line.querySelector(".rg-nowchip")!.textContent = hhmm(now);
       line.style.top = `${Math.round(((cur - dayStart) / (dayEnd - dayStart)) * height)}px`;
+
+      // Ocultar la etiqueta de hora más cercana a la línea (del diseño actualizado)
+      if (hiddenLabelRef.current) {
+        hiddenLabelRef.current.style.visibility = "";
+        hiddenLabelRef.current = null;
+      }
+      const lineY = line.getBoundingClientRect().top;
+      let best: HTMLElement | null = null;
+      let bestD = Infinity;
+      root.querySelectorAll<HTMLElement>(".fc-timegrid-slot-label-cushion").forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const d = Math.abs(r.top + r.height / 2 - lineY);
+        if (d < bestD) {
+          bestD = d;
+          best = el;
+        }
+      });
+      if (best && bestD < 16) {
+        (best as HTMLElement).style.visibility = "hidden";
+        hiddenLabelRef.current = best;
+      }
     };
     sync();
     const t = setInterval(sync, 30_000);

@@ -70,7 +70,7 @@ a:hover { filter: brightness(1.15); }
 /* Mobile (del diseño Web A actualizado) */
 @media (max-width: 760px) {
   .rg-header { padding: 26px 16px 0 !important; gap: 14px !important; }
-  .rg-h1 { font-size: 27px !important; }
+  .rg-logo { height: 30px !important; }
   .rg-nav { padding: 18px 16px 0 !important; }
   .rg-tabs { display: flex !important; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .rg-tabs::-webkit-scrollbar { display: none; }

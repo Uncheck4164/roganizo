@@ -15,7 +15,7 @@ function greeting(): string {
   return h < 6 ? "Buenas noches" : h < 13 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
 }
 
-function Login({ onOk }: { onOk: () => void }) {
+function Login({ onOk, theme }: { onOk: () => void; theme: Theme }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -44,7 +44,13 @@ function Login({ onOk }: { onOk: () => void }) {
           width: "min(360px, 100%)",
         }}
       >
-        <h1 style={{ margin: 0, fontSize: "30px", fontWeight: 300, letterSpacing: "-0.025em" }}>Roganizo</h1>
+        <h1 style={{ margin: 0, lineHeight: 0 }}>
+          <img
+            src={theme === "dark" ? "/logo-lockup-dark.png" : "/logo-lockup.png"}
+            alt="roganizo"
+            style={{ height: "34px", width: "auto", display: "block" }}
+          />
+        </h1>
         <span style={{ fontSize: "14px", color: "var(--muted)" }}>Panel de solo lectura</span>
         <input
           type="password"
@@ -141,7 +147,7 @@ export default function App() {
         }}
       >
         {loggedOut ? (
-          <Login onOk={() => queryClient.invalidateQueries()} />
+          <Login theme={theme} onOk={() => queryClient.invalidateQueries()} />
         ) : (
           <>
             <header
@@ -157,13 +163,15 @@ export default function App() {
                 flexWrap: "wrap",
               }}
             >
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <span style={{ fontSize: "14px", color: "var(--muted)" }}>{greeting()}</span>
-                <h1
-                  className="rg-h1"
-                  style={{ margin: 0, fontSize: "34px", fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 1 }}
-                >
-                  Roganizo
+                <h1 style={{ margin: 0, lineHeight: 0 }}>
+                  <img
+                    className="rg-logo"
+                    src={theme === "dark" ? "/logo-lockup-dark.png" : "/logo-lockup.png"}
+                    alt="roganizo"
+                    style={{ height: "38px", width: "auto", display: "block" }}
+                  />
                 </h1>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
