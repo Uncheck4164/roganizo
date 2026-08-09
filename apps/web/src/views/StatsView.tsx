@@ -19,6 +19,7 @@ function fmtRange(startISO: string, endISO: string): string {
 function StatTile({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
     <div
+      className="rg-panel"
       style={{
         ...panelStyle,
         flex: "1 1 200px",
@@ -95,7 +96,7 @@ export default function StatsView({ theme }: { theme: Theme }) {
         />
       </div>
 
-      <div style={{ ...panelStyle, padding: "26px 28px" }}>
+      <div className="rg-panel" style={{ ...panelStyle, padding: "26px 28px" }}>
         <div style={{ fontSize: "13px", color: "var(--muted)", paddingBottom: "20px" }}>
           Horas por actividad
         </div>

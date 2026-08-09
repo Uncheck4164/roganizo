@@ -145,6 +145,7 @@ export default function App() {
         ) : (
           <>
             <header
+              className="rg-header"
               style={{
                 maxWidth: "1120px",
                 margin: "0 auto",
@@ -158,7 +159,10 @@ export default function App() {
             >
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <span style={{ fontSize: "14px", color: "var(--muted)" }}>{greeting()}</span>
-                <h1 style={{ margin: 0, fontSize: "34px", fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 1 }}>
+                <h1
+                  className="rg-h1"
+                  style={{ margin: 0, fontSize: "34px", fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 1 }}
+                >
                   Roganizo
                 </h1>
               </div>
@@ -197,15 +201,15 @@ export default function App() {
               </div>
             </header>
 
-            <nav style={{ maxWidth: "1120px", margin: "0 auto", padding: "30px 36px 0" }}>
+            <nav className="rg-nav" style={{ maxWidth: "1120px", margin: "0 auto", padding: "30px 36px 0" }}>
               <div
+                className="rg-tabs"
                 style={{
                   display: "inline-flex",
                   gap: "4px",
                   background: "var(--chip)",
                   borderRadius: "999px",
                   padding: "5px",
-                  flexWrap: "wrap",
                 }}
               >
                 <button onClick={() => setTab("cal")} style={tabStyle(tab === "cal")}>
@@ -227,7 +231,7 @@ export default function App() {
               </div>
             </nav>
 
-            <main style={{ maxWidth: "1120px", margin: "0 auto", padding: "26px 36px" }}>
+            <main className="rg-main" style={{ maxWidth: "1120px", margin: "0 auto", padding: "26px 36px" }}>
               {tab === "cal" && <CalendarView theme={theme} timezone={status.data?.timezone} />}
               {tab === "todos" && <TodosView />}
               {tab === "notes" && <NotesView />}

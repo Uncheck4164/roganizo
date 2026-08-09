@@ -26,13 +26,14 @@ export default function NotesView() {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))",
+        gridTemplateColumns: "repeat(auto-fill, minmax(min(290px, 100%), 1fr))",
         gap: "18px",
       }}
     >
       {notes.data.map((n) => (
         <article
           key={n.id}
+          className="rg-note"
           style={{
             ...panelStyle,
             padding: "28px",

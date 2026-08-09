@@ -46,8 +46,24 @@ export default function CalendarView({
   const [filter, setFilter] = useState<EvFilter>("all");
   const [now, setNow] = useState(new Date());
   const [popover, setPopover] = useState<Popover | null>(null);
+  // Mobile: vista Día inicial y toolbar compacta; desktop: Semana completa.
+  const [narrow, setNarrow] = useState(() => window.innerWidth < 760);
   const wrapRef = useRef<HTMLDivElement>(null);
   const calRef = useRef<FullCalendar>(null);
+
+  useEffect(() => {
+    // Al cruzar el breakpoint, FullCalendar se remonta (key) con la vista
+    // y toolbars que corresponden al nuevo ancho.
+    const onResize = () => {
+      const n = window.innerWidth < 760;
+      setNarrow((prev) => {
+        if (n !== prev) setPopover(null);
+        return n;
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
@@ -189,7 +205,7 @@ export default function CalendarView({
     if (!wrap) return;
     const wr = wrap.getBoundingClientRect();
     const r = arg.el.getBoundingClientRect();
-    const left = Math.max(4, Math.min(r.left - wr.left, wrap.clientWidth - 296));
+    const left = Math.max(4, Math.min(r.left - wr.left, Math.max(4, wrap.clientWidth - 296)));
     let top = r.bottom - wr.top + 8;
     if (top > wrap.clientHeight - 150) top = Math.max(4, r.top - wr.top - 148);
     const start = arg.event.start;
@@ -212,6 +228,7 @@ export default function CalendarView({
     <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
       <div style={{ display: "flex", gap: "18px", flexWrap: "wrap", alignItems: "stretch" }}>
         <div
+          className="rg-hero"
           style={{
             flex: "2 1 380px",
             minWidth: "300px",
@@ -231,7 +248,10 @@ export default function CalendarView({
           </div>
           {current ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "26px" }}>
-              <div style={{ fontSize: "40px", fontWeight: 200, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
+              <div
+                className="rg-hero-title"
+                style={{ fontSize: "40px", fontWeight: 200, letterSpacing: "-0.03em", lineHeight: 1.05 }}
+              >
                 {current.title}
               </div>
               <div style={{ fontSize: "14px", opacity: 0.7 }}>
@@ -257,13 +277,17 @@ export default function CalendarView({
               </div>
             </div>
           ) : (
-            <div style={{ marginTop: "26px", fontSize: "34px", fontWeight: 200, letterSpacing: "-0.03em", opacity: 0.75 }}>
+            <div
+              className="rg-hero-title"
+              style={{ marginTop: "26px", fontSize: "34px", fontWeight: 200, letterSpacing: "-0.03em", opacity: 0.75 }}
+            >
               Un rato libre
             </div>
           )}
         </div>
 
         <div
+          className="rg-next"
           style={{
             ...panelStyle,
             flex: "1 1 280px",
@@ -296,7 +320,7 @@ export default function CalendarView({
         </div>
       </div>
 
-      <div style={{ ...panelStyle, padding: "26px 28px 22px" }}>
+      <div className="rg-panel" style={{ ...panelStyle, padding: "26px 28px 22px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", paddingBottom: "18px" }}>
           <button onClick={() => setFilter("all")} style={chipStyle(filter === "all")}>
             Todo
@@ -308,14 +332,15 @@ export default function CalendarView({
             Solo repetidos
           </button>
         </div>
-        <div ref={wrapRef} style={{ position: "relative" }} onClick={(e) => {
+        <div ref={wrapRef} className="rg-cal" style={{ position: "relative", minHeight: 620 }} onClick={(e) => {
           if (!(e.target as HTMLElement).closest(".fc-event") && !(e.target as HTMLElement).closest("[data-rg-pop]"))
             setPopover(null);
         }}>
           <FullCalendar
+            key={narrow ? "m" : "d"}
             ref={calRef}
             plugins={[timeGridPlugin, dayGridPlugin, listPlugin]}
-            initialView="timeGridWeek"
+            initialView={narrow ? "timeGridDay" : "timeGridWeek"}
             locale={esLocale}
             firstDay={1}
             nowIndicator={false}
@@ -330,11 +355,18 @@ export default function CalendarView({
             expandRows
             height="auto"
             dayMaxEvents
-            headerToolbar={{
-              left: "prev,next today",
-              center: "title",
-              right: "timeGridDay,timeGridWeek,dayGridMonth,listWeek",
-            }}
+            headerToolbar={
+              narrow
+                ? { left: "prev,next", center: "title", right: "today" }
+                : {
+                    left: "prev,next today",
+                    center: "title",
+                    right: "timeGridDay,timeGridWeek,dayGridMonth,listWeek",
+                  }
+            }
+            footerToolbar={
+              narrow ? { center: "timeGridDay,timeGridWeek,dayGridMonth,listWeek" } : false
+            }
             buttonText={{ today: "Hoy", month: "Mes", week: "Semana", day: "Día", list: "Lista" }}
             slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
             events={fetchEvents}
@@ -359,20 +391,26 @@ export default function CalendarView({
                   </span>
                 );
               }
+              const hasHead =
+                (arg.event.start && arg.event.end) || arg.event.extendedProps.recurring;
               return (
                 <div className="rg-ev" title={arg.event.title}>
                   <span className="rg-ev-t">{arg.event.title}</span>
-                  {arg.event.start && arg.event.end && (
-                    <span className="rg-ev-time">
-                      {hhmm(arg.event.start)} – {hhmm(arg.event.end)}
-                    </span>
-                  )}
-                  {arg.event.extendedProps.recurring && (
-                    <span className="rg-stack" title="Se repite cada semana">
-                      <i />
-                      <i />
-                      <i />
-                    </span>
+                  {hasHead && (
+                    <div className="rg-ev-head">
+                      {arg.event.start && arg.event.end && (
+                        <span className="rg-ev-time">
+                          {hhmm(arg.event.start)} – {hhmm(arg.event.end)}
+                        </span>
+                      )}
+                      {arg.event.extendedProps.recurring && (
+                        <span className="rg-stack" title="Se repite cada semana">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               );
@@ -382,6 +420,7 @@ export default function CalendarView({
           />
           {popover && (
             <div
+              className="rg-pop"
               data-rg-pop="1"
               style={{
                 position: "absolute",

@@ -25,10 +25,9 @@ a:hover { filter: brightness(1.15); }
 .fc .fc-timegrid-slot-label-cushion { font-size: 11.5px; font-weight: 300; color: var(--btn-fg); }
 .fc .fc-timegrid-slot { height: 62px; }
 .fc .fc-timegrid-body { position: relative; }
-.fc .fc-timegrid-col-events { margin: 0 4px 0 2px; }
-.fc .fc-timegrid-event, .fc .fc-daygrid-event { border-radius: 10px; border: none; padding: 0; box-shadow: none; overflow: hidden; }
-.fc .fc-timegrid-event-harness { margin-right: 3px; }
-.fc .fc-timegrid-event { height: calc(100% - 3px); }
+.fc .fc-timegrid-col-events { margin: 0 3px 0 1px; }
+.fc .fc-timegrid-event, .fc .fc-daygrid-event { border-radius: 8px; border: none; padding: 0; box-shadow: none; overflow: hidden; }
+.fc .fc-timegrid-event { height: calc(100% - 2px); }
 .fc .fc-event-main { padding: 0; }
 .fc .fc-scrollgrid { border-radius: 14px; overflow: hidden; }
 .fc .fc-event { cursor: pointer; }
@@ -48,20 +47,50 @@ a:hover { filter: brightness(1.15); }
 @keyframes rg-pulse { 0% { box-shadow: 0 0 0 0 var(--pulse); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 .rg-dot-ok { animation: rg-pulse 2.4s ease-out infinite; }
 
-.rg-ev { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 10px; overflow: hidden; }
+.rg-ev { height: 100%; display: flex; flex-direction: column; justify-content: flex-start; gap: 3px; padding: 7px 9px; overflow: hidden; }
+.rg-ev-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .rg-ev-t { font-size: 13px; font-weight: 400; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rg-ev-time { font-size: 11px; line-height: 1.1; opacity: .75; white-space: nowrap; }
+.fc-timegrid-event-short .rg-ev-head { display: none; }
+.rg-ev-time { font-size: 11px; line-height: 1.1; opacity: .75; white-space: nowrap; flex: 1; }
 .fc-timegrid-event-short .rg-ev { padding: 2px 9px; justify-content: center; }
 .fc-timegrid-event-short .rg-ev-t { font-size: 11.5px; }
-.fc-timegrid-event-short .rg-ev-time, .fc-daygrid-event .rg-ev-time { display: none; }
-.rg-stack { position: absolute; right: 7px; bottom: 6px; display: flex; align-items: flex-end; gap: 2px; padding: 3px 5px; border-radius: 6px; background: var(--rg-stack-bg); }
-.fc-timegrid-event-short .rg-stack { padding: 2px 4px; bottom: 3px; right: 5px; }
+.fc-daygrid-event .rg-ev-time { display: none; }
+.rg-stack { display: flex; align-items: flex-end; gap: 2px; padding: 3px 5px; border-radius: 6px; background: var(--rg-stack-bg); flex: none; }
 .fc-daygrid-event .rg-ev { flex-direction: row; align-items: center; gap: 8px; padding: 4px 8px; }
 .fc-daygrid-event .rg-ev-t { flex: 1; }
-.fc-daygrid-event .rg-stack { position: static; padding: 2px 4px; flex: none; }
+.fc-daygrid-event .rg-ev-head { display: flex; }
+.fc-daygrid-event .rg-stack { padding: 2px 4px; }
 .rg-stack i { display: block; width: 3px; border-radius: 1px; background: currentColor; opacity: .85; }
 .rg-stack i:nth-child(1) { height: 4px; }
 .rg-stack i:nth-child(2) { height: 7px; }
 .rg-stack i:nth-child(3) { height: 10px; }
 .rg-nowline { position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px solid var(--warn); z-index: 6; pointer-events: none; }
 .rg-nowchip { position: absolute; left: 0; top: 0; transform: translateY(-50%); background: var(--warn); color: var(--warn-fg); font-size: 10.5px; font-weight: 400; letter-spacing: .02em; border-radius: 999px; padding: 2px 7px; }
+
+/* Mobile (del diseño Web A actualizado) */
+@media (max-width: 760px) {
+  .rg-header { padding: 26px 16px 0 !important; gap: 14px !important; }
+  .rg-h1 { font-size: 27px !important; }
+  .rg-nav { padding: 18px 16px 0 !important; }
+  .rg-tabs { display: flex !important; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .rg-tabs::-webkit-scrollbar { display: none; }
+  .rg-tabs button { padding: 10px 14px !important; font-size: 13px !important; white-space: nowrap; }
+  .rg-main { padding: 16px !important; }
+  .rg-panel { padding: 16px 14px !important; border-radius: 20px !important; }
+  .rg-hero { padding: 22px 20px 26px !important; border-radius: 20px !important; min-width: 0 !important; flex-basis: 100% !important; }
+  .rg-hero-title { font-size: 30px !important; }
+  .rg-next { padding: 20px !important; border-radius: 20px !important; min-width: 0 !important; flex-basis: 100% !important; }
+  .rg-note { padding: 20px !important; border-radius: 20px !important; min-height: 0 !important; }
+  .rg-todo-row { grid-template-columns: 18px 1fr !important; gap: 12px !important; padding: 18px 0 !important; }
+  .rg-todo-meta { grid-column: 2 !important; flex-wrap: wrap; }
+  .rg-pop { position: fixed !important; left: 12px !important; right: 12px !important; top: auto !important; bottom: 12px !important; width: auto !important; z-index: 60 !important; }
+  .rg-cal { min-height: 440px !important; }
+  .fc .fc-toolbar { flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: .8em !important; }
+  .fc .fc-toolbar-chunk { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; }
+  .fc .fc-toolbar-title { font-size: 16px !important; text-align: center; }
+  .fc .fc-button { padding: 8px 12px !important; font-size: 12.5px !important; }
+  .fc .fc-timegrid-slot { height: 54px; }
+  .fc .fc-col-header-cell-cushion { padding: 9px 2px; font-size: 11.5px; }
+  .fc .fc-daygrid-day-number { padding: 5px; }
+  .rg-ev { padding: 5px 8px; }
+}

@@ -78,7 +78,7 @@ export default function TodosView() {
         </button>
       </div>
 
-      <div style={{ ...panelStyle, padding: "10px 28px" }}>
+      <div className="rg-panel" style={{ ...panelStyle, padding: "10px 28px" }}>
         {tasks.isLoading && (
           <div style={{ padding: "24px 0", fontSize: "14px", color: "var(--muted)" }}>Cargando…</div>
         )}
@@ -93,6 +93,7 @@ export default function TodosView() {
           return (
             <div
               key={t.id}
+              className="rg-todo-row"
               style={{
                 display: "grid",
                 gridTemplateColumns: "18px 1fr auto",
@@ -119,7 +120,10 @@ export default function TodosView() {
                   </span>
                 )}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "13px" }}>
+              <div
+                className="rg-todo-meta"
+                style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "13px" }}
+              >
                 {prio && (
                   <span style={{ display: "flex", alignItems: "center", gap: "7px", color: "var(--muted)" }}>
                     <span
@@ -157,10 +161,11 @@ export default function TodosView() {
           <span style={{ fontSize: "13px", color: "var(--muted)", paddingLeft: "4px" }}>
             Recordatorios programados
           </span>
-          <div style={{ ...panelStyle, padding: "6px 28px" }}>
+          <div className="rg-panel" style={{ ...panelStyle, padding: "6px 28px" }}>
             {reminders.data!.map((r) => (
               <div
                 key={r.id}
+                className="rg-todo-row"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "18px 1fr auto",
@@ -197,6 +202,7 @@ export default function TodosView() {
             {done.map((t) => (
               <div
                 key={t.id}
+                className="rg-todo-row"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "18px 1fr auto",
