@@ -49,17 +49,27 @@ export async function fetchJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function login(password: string): Promise<boolean> {
+export interface LoginResult {
+  ok: boolean;
+  /** 409 from the server: nothing is configured yet, go through setup instead. */
+  setupRequired: boolean;
+}
+
+export async function login(password: string): Promise<LoginResult> {
   const res = await fetch("/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
     credentials: "same-origin",
   });
-  return res.ok;
+  if (res.status === 409) {
+    const body = (await res.json().catch(() => null)) as { setupRequired?: boolean } | null;
+    return { ok: false, setupRequired: body?.setupRequired !== false };
+  }
+  return { ok: res.ok, setupRequired: false };
 }
 
-/** Prioridad codificada en las notes de Google Tasks: "Prioridad: Alta" en la primera línea. */
+/** Priority encoded in the Google Tasks notes: "Prioridad: Alta" on the first line. */
 export function taskPriority(t: ApiTask): "Alta" | "Media" | "Baja" | null {
   const m = t.notes?.match(/^Prioridad:\s*(Alta|Media|Baja)/i);
   if (!m) return null;

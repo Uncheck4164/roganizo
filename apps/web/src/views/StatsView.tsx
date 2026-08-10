@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { fetchJson, type ApiStats } from "../lib/api";
 import { category } from "../lib/colors";
+import { useI18n } from "../lib/i18n";
 import { chipStyle, panelStyle, type Theme } from "../lib/theme";
 
 function isoDatePlusDays(base: Date, days: number): string {
@@ -11,8 +12,8 @@ function isoDatePlusDays(base: Date, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function fmtRange(startISO: string, endISO: string): string {
-  const f = new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short" });
+function fmtRange(startISO: string, endISO: string, locale: string): string {
+  const f = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" });
   return `${f.format(new Date(startISO + "T12:00:00"))} – ${f.format(new Date(endISO + "T12:00:00"))}`;
 }
 
@@ -40,7 +41,8 @@ function StatTile({ label, value, detail }: { label: string; value: string; deta
 }
 
 export default function StatsView({ theme }: { theme: Theme }) {
-  // Offset de semanas respecto de la actual (0 = esta semana)
+  const { t, locale } = useI18n();
+  // Week offset relative to the current one (0 = this week).
   const [weekOffset, setWeekOffset] = useState(0);
   const weekParam = isoDatePlusDays(new Date(), weekOffset * 7);
 
@@ -62,17 +64,19 @@ export default function StatsView({ theme }: { theme: Theme }) {
         <button
           onClick={() => setWeekOffset((w) => w - 1)}
           style={{ ...chipStyle(false), display: "flex", alignItems: "center", gap: "4px" }}
-          aria-label="Semana anterior"
+          aria-label={t("stats.prevWeek")}
+          title={t("stats.prevWeek")}
         >
           <ChevronLeft style={{ width: 14, height: 14 }} strokeWidth={2} />
         </button>
         <button onClick={() => setWeekOffset(0)} style={chipStyle(weekOffset === 0)}>
-          {data ? fmtRange(data.weekStart, data.weekEnd) : "Esta semana"}
+          {data ? fmtRange(data.weekStart, data.weekEnd, locale) : t("stats.thisWeek")}
         </button>
         <button
           onClick={() => setWeekOffset((w) => w + 1)}
           style={{ ...chipStyle(false), display: "flex", alignItems: "center", gap: "4px" }}
-          aria-label="Semana siguiente"
+          aria-label={t("stats.nextWeek")}
+          title={t("stats.nextWeek")}
         >
           <ChevronRight style={{ width: 14, height: 14 }} strokeWidth={2} />
         </button>
@@ -80,31 +84,33 @@ export default function StatsView({ theme }: { theme: Theme }) {
 
       <div style={{ display: "flex", gap: "18px", flexWrap: "wrap" }}>
         <StatTile
-          label="Horas agendadas"
-          value={data ? `${data.totalHours} h` : "—"}
-          detail="en la semana"
+          label={t("stats.scheduledHours")}
+          value={data ? `${data.totalHours} ${t("common.hours")}` : "—"}
+          detail={t("stats.inTheWeek")}
         />
         <StatTile
-          label="To-dos completados"
+          label={t("stats.todosDone")}
           value={tasksPct !== null ? `${tasksPct}%` : "—"}
-          detail={data ? `${data.tasks.completed} de ${data.tasks.total}` : undefined}
+          detail={
+            data ? t("stats.ofTotal", { done: data.tasks.completed, total: data.tasks.total }) : undefined
+          }
         />
         <StatTile
-          label="Actividades distintas"
+          label={t("stats.distinct")}
           value={data ? String(data.byActivity.length) : "—"}
-          detail="con tiempo asignado"
+          detail={t("stats.withTime")}
         />
       </div>
 
       <div className="rg-panel" style={{ ...panelStyle, padding: "26px 28px" }}>
         <div style={{ fontSize: "13px", color: "var(--muted)", paddingBottom: "20px" }}>
-          Horas por actividad
+          {t("stats.hoursByActivity")}
         </div>
-        {stats.isLoading && <div style={{ fontSize: "14px", color: "var(--muted)" }}>Cargando…</div>}
+        {stats.isLoading && (
+          <div style={{ fontSize: "14px", color: "var(--muted)" }}>{t("common.loading")}</div>
+        )}
         {data && data.byActivity.length === 0 && (
-          <div style={{ fontSize: "14px", color: "var(--muted)" }}>
-            Sin eventos esta semana.
-          </div>
+          <div style={{ fontSize: "14px", color: "var(--muted)" }}>{t("stats.noEvents")}</div>
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {data?.byActivity.map((a) => {
@@ -112,7 +118,7 @@ export default function StatsView({ theme }: { theme: Theme }) {
             return (
               <div
                 key={a.title}
-                title={`${a.title}: ${a.hours} h`}
+                title={`${a.title}: ${a.hours} ${t("common.hours")}`}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "150px 1fr 56px",
@@ -149,7 +155,7 @@ export default function StatsView({ theme }: { theme: Theme }) {
                   />
                 </div>
                 <span style={{ fontSize: "13px", color: "var(--muted)", textAlign: "right" }}>
-                  {a.hours} h
+                  {a.hours} {t("common.hours")}
                 </span>
               </div>
             );

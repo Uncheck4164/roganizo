@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { desc, isNull } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { db, schema } from "../db/index.js";
-import { config } from "../config.js";
+import { config, isPasswordConfigured } from "../config.js";
 import { isGoogleConnected } from "../google/auth.js";
 import { isBotRunning } from "../bot/bot.js";
 import { listEvents } from "../google/calendar.js";
@@ -19,16 +19,21 @@ function safeEquals(a: string, b: string): boolean {
 }
 
 apiRoutes.post("/login", async (c) => {
+  // With no password yet there is nothing to log into: the SPA must run setup.
+  if (!isPasswordConfigured()) return c.json({ setupRequired: true }, 409);
   const body = (await c.req.json().catch(() => ({}))) as { password?: string };
   if (!body.password || !safeEquals(body.password, config.WEB_PASSWORD)) {
-    return c.json({ error: "Contraseña incorrecta" }, 401);
+    return c.json({ error: "Wrong password" }, 401);
   }
   setSessionCookie(c);
   return c.json({ ok: true });
 });
 
-// Todo lo que sigue es READ-ONLY y requiere sesión.
-apiRoutes.use("/api/*", requireSession);
+// Everything below is READ-ONLY and requires a session. /api/settings is the one
+// exception: it carries its own guard so that it stays reachable during setup.
+apiRoutes.use("/api/*", (c, next) =>
+  c.req.path.startsWith("/api/settings") ? next() : requireSession(c, next),
+);
 
 apiRoutes.get("/api/status", (c) =>
   c.json({
@@ -42,7 +47,7 @@ apiRoutes.get("/api/status", (c) =>
 apiRoutes.get("/api/events", async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
-  if (!from || !to) return c.json({ error: "from y to son obligatorios" }, 400);
+  if (!from || !to) return c.json({ error: "from and to are required" }, 400);
   return c.json(await listEvents(from, to));
 });
 
@@ -64,7 +69,7 @@ apiRoutes.get("/api/reminders", (c) =>
 );
 
 apiRoutes.get("/api/stats", async (c) => {
-  const weekOf = c.req.query("week"); // cualquier fecha dentro de la semana
+  const weekOf = c.req.query("week"); // any date inside the target week
   const ref = weekOf
     ? DateTime.fromISO(weekOf, { zone: config.TIMEZONE })
     : DateTime.now().setZone(config.TIMEZONE);

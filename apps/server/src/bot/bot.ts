@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { config } from "../config.js";
+import { t } from "../i18n.js";
 import { isGoogleConnected } from "../google/auth.js";
 import {
   cancelPendingAction,
@@ -8,9 +9,11 @@ import {
   runAgent,
 } from "../agent/agent.js";
 
-export const bot = new Bot(config.TELEGRAM_BOT_TOKEN);
+// The placeholder keeps the constructor from throwing while the app is still in
+// setup mode; bot.start() is never called before the token is configured.
+export const bot = new Bot(config.TELEGRAM_BOT_TOKEN || "0:SETUP_PLACEHOLDER");
 
-/** El LLM insiste con markdown y Telegram lo muestra literal: se limpia siempre. */
+/** The LLM insists on markdown and Telegram renders it literally: always strip it. */
 function stripMarkdown(text: string): string {
   return text
     .replace(/\*\*(.+?)\*\*/gs, "$1")
@@ -28,12 +31,12 @@ export const setBotRunning = (v: boolean) => {
   botRunning = v;
 };
 
-// Mono-usuario: cualquier otro chat se ignora (se loguea el ID para poder
-// configurar TELEGRAM_ALLOWED_USER_ID la primera vez).
+// Single-user: every other chat is ignored (the ID is logged so that
+// TELEGRAM_ALLOWED_USER_ID can be filled in the first time).
 bot.use(async (ctx, next) => {
   if (ctx.from?.id !== config.TELEGRAM_ALLOWED_USER_ID) {
     console.log(
-      `Mensaje ignorado de user ID ${ctx.from?.id} (@${ctx.from?.username ?? "sin username"})`,
+      `Ignored message from user ID ${ctx.from?.id} (@${ctx.from?.username ?? "no username"})`,
     );
     return;
   }
@@ -42,31 +45,24 @@ bot.use(async (ctx, next) => {
 
 bot.command("start", async (ctx) => {
   if (!isGoogleConnected()) {
-    await ctx.reply(
-      "¡Hola! Soy Roganizo 🗓\n\nPara empezar necesito acceso a tu Google Calendar y Google Tasks. Entrá acá y aceptá:\n" +
-        `${config.PUBLIC_URL}/oauth/login\n\nCuando termines, mandame tu horario o lo que necesites.`,
-    );
+    await ctx.reply(t("startNeedsGoogle", { url: `${config.PUBLIC_URL}/oauth/login` }));
     return;
   }
-  await ctx.reply(
-    "¡Hola! Soy Roganizo 🗓 Contame qué necesitás: crear tu horario, agendar algo, un recordatorio, una nota o un to-do.",
-  );
+  await ctx.reply(t("startReady"));
 });
 
 bot.command("web", async (ctx) => {
-  await ctx.reply(`Tu panel (solo lectura): ${config.PUBLIC_URL}`);
+  await ctx.reply(t("webPanel", { url: config.PUBLIC_URL }));
 });
 
 bot.command("reset", async (ctx) => {
   resetHistory();
-  await ctx.reply("Memoria de conversación borrada. Empezamos de cero 🙂");
+  await ctx.reply(t("historyReset"));
 });
 
 bot.on("message:text", async (ctx) => {
   if (!isGoogleConnected()) {
-    await ctx.reply(
-      `Primero conectá tu Google acá: ${config.PUBLIC_URL}/oauth/login — después seguimos.`,
-    );
+    await ctx.reply(t("needsGoogle", { url: `${config.PUBLIC_URL}/oauth/login` }));
     return;
   }
   await ctx.replyWithChatAction("typing");
@@ -80,20 +76,20 @@ bot.on("message:text", async (ctx) => {
     for (const p of result.pending) {
       await ctx.reply(stripMarkdown(p.summary), {
         reply_markup: new InlineKeyboard()
-          .text("✅ Confirmar", `confirm:${p.id}`)
-          .text("❌ Cancelar", `cancel:${p.id}`),
+          .text(t("btnConfirm"), `confirm:${p.id}`)
+          .text(t("btnCancel"), `cancel:${p.id}`),
       });
     }
   } catch (err) {
     clearInterval(typing);
-    console.error("Error en el agente:", err);
-    await ctx.reply(`Algo falló procesando eso 😞\n${(err as Error).message}`);
+    console.error("Agent error:", err);
+    await ctx.reply(t("agentError", { message: (err as Error).message }));
   }
 });
 
 bot.callbackQuery(/^confirm:(\d+)$/, async (ctx) => {
   const id = Number(ctx.match[1]);
-  await ctx.answerCallbackQuery({ text: "Ejecutando..." });
+  await ctx.answerCallbackQuery({ text: t("toastExecuting") });
   const lines = await executePendingAction(id);
   await ctx.editMessageText(`${ctx.callbackQuery.message?.text ?? ""}\n\n${lines.join("\n")}`);
 });
@@ -101,11 +97,11 @@ bot.callbackQuery(/^confirm:(\d+)$/, async (ctx) => {
 bot.callbackQuery(/^cancel:(\d+)$/, async (ctx) => {
   const id = Number(ctx.match[1]);
   await cancelPendingAction(id);
-  await ctx.answerCallbackQuery({ text: "Cancelado" });
-  await ctx.editMessageText(`${ctx.callbackQuery.message?.text ?? ""}\n\n❌ Cancelado.`);
+  await ctx.answerCallbackQuery({ text: t("toastCancelled") });
+  await ctx.editMessageText(`${ctx.callbackQuery.message?.text ?? ""}\n\n${t("markCancelled")}`);
 });
 
-// Confirmación de recordatorios urgentes: frena el escalado.
+// Acknowledgement of urgent reminders: stops the escalation.
 bot.callbackQuery(/^ack:(\d+)$/, async (ctx) => {
   const { eq } = await import("drizzle-orm");
   const { db, schema } = await import("../db/index.js");
@@ -115,22 +111,22 @@ bot.callbackQuery(/^ack:(\d+)$/, async (ctx) => {
     .set({ ackedAt: nowISO, firedAt: nowISO })
     .where(eq(schema.reminders.id, id))
     .run();
-  await ctx.answerCallbackQuery({ text: "Confirmado 👍" });
-  await ctx.editMessageText(`${ctx.callbackQuery.message?.text ?? ""}\n\n✅ Visto.`);
+  await ctx.answerCallbackQuery({ text: t("toastAcked") });
+  await ctx.editMessageText(`${ctx.callbackQuery.message?.text ?? ""}\n\n${t("markSeen")}`);
 });
 
 bot.catch((err) => {
-  console.error("Error del bot:", err.error);
+  console.error("Bot error:", err.error);
 });
 
-/** Para el scheduler: mandar mensajes proactivos al usuario. */
+/** For the scheduler: send proactive messages to the user. */
 export async function sendToUser(text: string): Promise<void> {
   await bot.api.sendMessage(config.TELEGRAM_ALLOWED_USER_ID, text);
 }
 
-/** Recordatorio urgente con botón de confirmación. */
+/** Urgent reminder with an acknowledgement button. */
 export async function sendReminderAttempt(reminderId: number, text: string): Promise<void> {
   await bot.api.sendMessage(config.TELEGRAM_ALLOWED_USER_ID, text, {
-    reply_markup: new InlineKeyboard().text("✅ Visto", `ack:${reminderId}`),
+    reply_markup: new InlineKeyboard().text(t("btnSeen"), `ack:${reminderId}`),
   });
 }

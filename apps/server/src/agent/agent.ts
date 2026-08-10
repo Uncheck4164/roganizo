@@ -1,6 +1,7 @@
 import { desc } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { config } from "../config.js";
+import { t } from "../i18n.js";
 import { systemPrompt } from "./prompt.js";
 import { executeTool, toolDefinitions, type PendingRequest, type ToolContext } from "./tools/index.js";
 
@@ -16,16 +17,16 @@ interface ChatMessage {
 }
 
 const MAX_ITERATIONS = 10;
-/** Turnos completos de conversación que se le reinyectan al modelo. */
+/** Full conversation turns that get replayed to the model. */
 const HISTORY_TURNS = 8;
-/** Filas crudas a leer para armar esos turnos (cada turno son varias filas). */
+/** Raw rows read to rebuild those turns (each turn spans several rows). */
 const HISTORY_ROWS = 120;
-/** Resultados de tools recortados al persistirlos (el turno vivo usa el completo). */
+/** Tool results are truncated when persisted (the live turn uses the full one). */
 const TOOL_RESULT_MAX = 1200;
 
 /**
- * Frases con las que el modelo afirma haber hecho algo. Sin \b a propósito:
- * en JS es ASCII-only y se rompe con acentos ("sumé") y emojis ("Listo ✅").
+ * Phrases the model uses to claim it did something. No \b on purpose: in JS it
+ * is ASCII-only and breaks with accents ("sumé") and emojis ("Listo ✅").
  */
 const CLAIMS_ACTION =
   /(^|[^a-záéíóúñ])(cre[eéa]|agend[eéa]|program[eéa]|guard[eéa]|actualic|actualizad|modifiqu|elimin|borr[eéaó]|mov[ií]|extend[ií]|sum[eéo]|añad|qued[oó]|corregid|corrig[ií]|(list|hech)[oa]\s*✅)/i;
@@ -59,14 +60,14 @@ async function callOpenRouter(messages: ChatMessage[]) {
     choices: { message: ChatMessage }[];
   };
   const msg = data.choices[0]?.message;
-  if (!msg) throw new Error("OpenRouter devolvió una respuesta vacía");
+  if (!msg) throw new Error("OpenRouter returned an empty response");
   return msg;
 }
 
 /**
- * Deja solo secuencias válidas para la API: arranca en un mensaje de usuario y
- * corta antes de cualquier tool_call que se haya quedado sin su resultado
- * (pasa si el proceso murió a mitad de un turno).
+ * Keeps only sequences the API accepts: starts at a user message and cuts
+ * before any tool_call left without its result (which happens when the process
+ * died mid-turn).
  */
 function sanitize(msgs: ChatMessage[]): ChatMessage[] {
   const start = msgs.findIndex((m) => m.role === "user");
@@ -98,13 +99,13 @@ function loadHistory(): ChatMessage[] {
     .all()
     .reverse();
 
-  // Las filas viejas (sin payload) son justamente las que enseñaban a mentir:
-  // guardaban el texto de éxito sin la llamada a la tool que lo respaldaba.
+  // Old rows (without payload) are exactly the ones that taught the model to
+  // lie: they stored the success text without the tool call backing it.
   const msgs = rows
     .filter((r) => r.payload)
     .map((r) => JSON.parse(r.payload!) as ChatMessage);
 
-  // Agrupar en turnos (cada turno arranca en un mensaje del usuario)
+  // Group into turns (each turn starts with a user message)
   const turns: ChatMessage[][] = [];
   for (const m of msgs) {
     if (m.role === "user" || turns.length === 0) turns.push([m]);
@@ -137,7 +138,7 @@ export interface AgentResult {
   pending: PendingRequest[];
 }
 
-/** Corre el loop de tool-calling para un mensaje del usuario. */
+/** Runs the tool-calling loop for one user message. */
 export async function runAgent(userMessage: string): Promise<AgentResult> {
   const ctx: ToolContext = { pending: [], mutated: [] };
   const userMsg: ChatMessage = { role: "user", content: userMessage };
@@ -156,13 +157,13 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
     saveMessage(msg);
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
-      const text = msg.content?.trim() || "Listo.";
+      const text = msg.content?.trim() || t("agentDone");
 
-      // Red de seguridad: si afirma haber hecho algo sin haber ejecutado
-      // ninguna tool mutante, se le exige que lo haga de verdad (una sola vez).
+      // Safety net: if it claims it did something without having run any mutating
+      // tool, demand that it actually does it (only once).
       if (!corrected && ctx.mutated!.length === 0 && CLAIMS_ACTION.test(text)) {
         corrected = true;
-        console.warn(`[agente] respuesta sin acción real, exigiendo corrección: "${text.slice(0, 80)}"`);
+        console.warn(`[agent] reply with no real action, demanding a correction: "${text.slice(0, 80)}"`);
         messages.push({
           role: "system",
           content:
@@ -196,13 +197,12 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
     }
   }
 
-  const text =
-    "Me quedé sin pasos para completar eso (demasiadas operaciones seguidas). Probá dividir el pedido.";
+  const text = t("agentTooManySteps");
   saveMessage({ role: "assistant", content: text });
   return { text, pending: ctx.pending };
 }
 
-/** Ejecuta las acciones de un pending_action confirmado. Devuelve resumen por acción. */
+/** Runs the actions of a confirmed pending_action. Returns a summary per action. */
 export async function executePendingAction(pendingId: number): Promise<string[]> {
   const { eq } = await import("drizzle-orm");
   const row = db
@@ -210,10 +210,10 @@ export async function executePendingAction(pendingId: number): Promise<string[]>
     .from(schema.pendingActions)
     .where(eq(schema.pendingActions.id, pendingId))
     .get();
-  if (!row || row.status !== "pending") return ["Esta acción ya no está pendiente."];
+  if (!row || row.status !== "pending") return [t("pendingGone")];
 
-  // Consumir ANTES de ejecutar: si el proceso muere a mitad de camino, la
-  // re-entrega del callback no debe re-ejecutar todo (duplicaría eventos).
+  // Consume BEFORE running: if the process dies halfway through, a redelivered
+  // callback must not re-run everything (it would duplicate events).
   db.update(schema.pendingActions)
     .set({ status: "confirmed" })
     .where(eq(schema.pendingActions.id, pendingId))
@@ -226,7 +226,7 @@ export async function executePendingAction(pendingId: number): Promise<string[]>
     try {
       const result = (await executeTool(a.tool, a.args, ctx)) as Record<string, unknown>;
       if (result && result.conflict) {
-        lines.push(`⚠️ ${a.args.title ?? a.tool}: no se creó, hay conflicto de horario.`);
+        lines.push(t("batchConflict", { label: String(a.args.title ?? a.tool) }));
       } else {
         lines.push(`✅ ${a.args.title ?? a.args.message ?? a.tool}`);
       }

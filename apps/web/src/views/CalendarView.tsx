@@ -8,6 +8,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import listPlugin from "@fullcalendar/list";
 import { fetchJson, type ApiEvent } from "../lib/api";
 import { category } from "../lib/colors";
+import { useI18n } from "../lib/i18n";
 import { chipStyle, panelStyle, type Theme } from "../lib/theme";
 
 type EvFilter = "all" | "once" | "weekly";
@@ -15,8 +16,8 @@ type EvFilter = "all" | "once" | "weekly";
 const pad = (n: number) => String(n).padStart(2, "0");
 const hhmm = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-// Como en el diseño original: si estás despierto fuera de 07-22, la grilla
-// se estira para incluir la hora actual (y la línea de "ahora" siempre se ve).
+// As in the original design: if you are awake outside 07-22 the grid stretches
+// to include the current hour (so the "now" line is always visible).
 const H0 = new Date().getHours();
 const DAY_START_HOUR = Math.min(7, Math.max(0, H0));
 const DAY_END_HOUR = Math.max(22, Math.min(24, H0 + 2));
@@ -43,17 +44,18 @@ export default function CalendarView({
   theme: Theme;
   timezone?: string;
 }) {
+  const { t, lang, locale } = useI18n();
   const [filter, setFilter] = useState<EvFilter>("all");
   const [now, setNow] = useState(new Date());
   const [popover, setPopover] = useState<Popover | null>(null);
-  // Mobile: vista Día inicial y toolbar compacta; desktop: Semana completa.
+  // Mobile: Day view and a compact toolbar by default; desktop: full Week.
   const [narrow, setNarrow] = useState(() => window.innerWidth < 760);
   const wrapRef = useRef<HTMLDivElement>(null);
   const calRef = useRef<FullCalendar>(null);
 
   useEffect(() => {
-    // Al cruzar el breakpoint, FullCalendar se remonta (key) con la vista
-    // y toolbars que corresponden al nuevo ancho.
+    // Crossing the breakpoint remounts FullCalendar (via key) with the view and
+    // toolbars that match the new width.
     const onResize = () => {
       const n = window.innerWidth < 760;
       setNarrow((prev) => {
@@ -78,8 +80,8 @@ export default function CalendarView({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Función de eventos memoizada: si cambiara de identidad en cada render,
-  // FullCalendar recargaría el calendario cada 30s (tick del reloj).
+  // Memoised events function: if its identity changed on every render,
+  // FullCalendar would reload the calendar every 30s (the clock tick).
   const fetchEvents = useCallback(
     async (
       info: { startStr: string; endStr: string },
@@ -111,7 +113,7 @@ export default function CalendarView({
     [filter],
   );
 
-  // El tema vive fuera de FullCalendar: re-render de eventos para repintar colores
+  // The theme lives outside FullCalendar: re-render events to repaint the colours.
   useEffect(() => {
     calRef.current?.getApi().refetchEvents();
   }, [theme]);
@@ -122,7 +124,7 @@ export default function CalendarView({
     queryFn: () => fetchJson<ApiEvent[]>(`/api/events?from=${range.from}&to=${range.to}`),
   });
 
-  // FullCalendar no pasa por TanStack Query: refresco periódico propio.
+  // FullCalendar does not go through TanStack Query: it refreshes on its own.
   useEffect(() => {
     const t = setInterval(() => calRef.current?.getApi().refetchEvents(), 60_000);
     return () => clearInterval(t);
@@ -148,7 +150,9 @@ export default function CalendarView({
         Math.round(((now.getTime() - current.s.getTime()) / (current.e.getTime() - current.s.getTime())) * 100),
       ),
     );
-    remaining = `quedan ${Math.max(1, Math.round((current.e.getTime() - now.getTime()) / 60000))} min`;
+    remaining = t("cal.remaining", {
+      n: Math.max(1, Math.round((current.e.getTime() - now.getTime()) / 60000)),
+    });
   }
 
   const swatch = (title: string, size = 12): React.CSSProperties => ({
@@ -159,10 +163,10 @@ export default function CalendarView({
     background: category(title, theme).bg,
   });
 
-  // Etiqueta de hora que la línea de "ahora" tapa (se oculta para no encimarse)
+  // Slot label the "now" line covers (hidden so the two do not overlap).
   const hiddenLabelRef = useRef<HTMLElement | null>(null);
 
-  // Línea de "ahora" sobre la grilla horaria (portado del diseño)
+  // "Now" line over the time grid (ported from the design).
   useEffect(() => {
     const sync = () => {
       const root = wrapRef.current;
@@ -194,7 +198,7 @@ export default function CalendarView({
       line.querySelector(".rg-nowchip")!.textContent = hhmm(now);
       line.style.top = `${Math.round(((cur - dayStart) / (dayEnd - dayStart)) * height)}px`;
 
-      // Ocultar la etiqueta de hora más cercana a la línea (del diseño actualizado)
+      // Hide the slot label closest to the line (from the updated design).
       if (hiddenLabelRef.current) {
         hiddenLabelRef.current.style.visibility = "";
         hiddenLabelRef.current = null;
@@ -235,7 +239,7 @@ export default function CalendarView({
     const start = arg.event.start;
     const end = arg.event.end;
     let when = start
-      ? new Intl.DateTimeFormat("es-CL", { weekday: "long", day: "numeric", month: "long" }).format(start) +
+      ? new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(start) +
         (end ? ` · ${hhmm(start)} – ${hhmm(end)}` : "")
       : "";
     when = when.charAt(0).toUpperCase() + when.slice(1);
@@ -265,7 +269,7 @@ export default function CalendarView({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
-            <span style={{ fontSize: "13px", opacity: 0.65 }}>Ahora</span>
+            <span style={{ fontSize: "13px", opacity: 0.65 }}>{t("cal.now")}</span>
             <span style={{ fontSize: "13px", opacity: 0.65 }}>
               {hhmm(now)} · {timezone?.split("/")[1]?.replace("_", " ") ?? "Santiago"}
             </span>
@@ -305,7 +309,7 @@ export default function CalendarView({
               className="rg-hero-title"
               style={{ marginTop: "26px", fontSize: "34px", fontWeight: 200, letterSpacing: "-0.03em", opacity: 0.75 }}
             >
-              Un rato libre
+              {t("cal.free")}
             </div>
           )}
         </div>
@@ -322,10 +326,10 @@ export default function CalendarView({
             gap: "20px",
           }}
         >
-          <span style={{ fontSize: "13px", color: "var(--muted)" }}>A continuación</span>
+          <span style={{ fontSize: "13px", color: "var(--muted)" }}>{t("cal.next")}</span>
           <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
             {upcoming.length === 0 && (
-              <span style={{ fontSize: "14px", color: "var(--faint)" }}>Nada más por hoy.</span>
+              <span style={{ fontSize: "14px", color: "var(--faint)" }}>{t("cal.nothingElse")}</span>
             )}
             {upcoming.map((e) => {
               const mins = Math.round((e.s.getTime() - now.getTime()) / 60000);
@@ -335,7 +339,9 @@ export default function CalendarView({
                   <span style={{ fontSize: "14px", color: "var(--muted)", minWidth: "44px" }}>{hhmm(e.s)}</span>
                   <span style={{ fontSize: "17px", flex: 1, fontWeight: 300 }}>{e.title}</span>
                   <span style={{ fontSize: "13px", color: "var(--faint)" }}>
-                    {mins < 60 ? `en ${mins} min` : `en ${Math.round(mins / 60)} h`}
+                    {mins < 60
+                      ? t("cal.inMin", { n: mins })
+                      : t("cal.inHours", { n: Math.round(mins / 60) })}
                   </span>
                 </div>
               );
@@ -347,13 +353,13 @@ export default function CalendarView({
       <div className="rg-panel" style={{ ...panelStyle, padding: "26px 28px 22px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", paddingBottom: "18px" }}>
           <button onClick={() => setFilter("all")} style={chipStyle(filter === "all")}>
-            Todo
+            {t("cal.filter.all")}
           </button>
           <button onClick={() => setFilter("once")} style={chipStyle(filter === "once")}>
-            Solo únicos
+            {t("cal.filter.once")}
           </button>
           <button onClick={() => setFilter("weekly")} style={chipStyle(filter === "weekly")}>
-            Solo repetidos
+            {t("cal.filter.weekly")}
           </button>
         </div>
         <div ref={wrapRef} className="rg-cal" style={{ position: "relative", minHeight: 620 }} onClick={(e) => {
@@ -361,11 +367,11 @@ export default function CalendarView({
             setPopover(null);
         }}>
           <FullCalendar
-            key={narrow ? "m" : "d"}
+            key={`${narrow ? "m" : "d"}-${lang}`}
             ref={calRef}
             plugins={[timeGridPlugin, dayGridPlugin, listPlugin]}
             initialView={narrow ? "timeGridDay" : "timeGridWeek"}
-            locale={esLocale}
+            locale={lang === "es" ? esLocale : "en"}
             firstDay={1}
             nowIndicator={false}
             allDaySlot={false}
@@ -391,7 +397,13 @@ export default function CalendarView({
             footerToolbar={
               narrow ? { center: "timeGridDay,timeGridWeek,dayGridMonth,listWeek" } : false
             }
-            buttonText={{ today: "Hoy", month: "Mes", week: "Semana", day: "Día", list: "Lista" }}
+            buttonText={{
+              today: t("cal.btn.today"),
+              month: t("cal.btn.month"),
+              week: t("cal.btn.week"),
+              day: t("cal.btn.day"),
+              list: t("cal.btn.list"),
+            }}
             slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
             events={fetchEvents}
             eventDidMount={(arg) => {
@@ -411,7 +423,7 @@ export default function CalendarView({
                 return (
                   <span style={{ color: "var(--fg)" }}>
                     {arg.event.title}
-                    {arg.event.extendedProps.recurring ? "  ·  cada semana" : ""}
+                    {arg.event.extendedProps.recurring ? `  ·  ${t("cal.everyWeek")}` : ""}
                   </span>
                 );
               }
@@ -428,7 +440,7 @@ export default function CalendarView({
                         </span>
                       )}
                       {arg.event.extendedProps.recurring && (
-                        <span className="rg-stack" title="Se repite cada semana">
+                        <span className="rg-stack" title={t("cal.recurring")}>
                           <i />
                           <i />
                           <i />
@@ -487,7 +499,7 @@ export default function CalendarView({
               </div>
               <div style={{ fontSize: "14px", color: "var(--muted)" }}>{popover.when}</div>
               <div style={{ fontSize: "13px", color: "var(--faint)" }}>
-                {popover.recurring ? "Se repite cada semana" : "Evento único"}
+                {popover.recurring ? t("cal.recurring") : t("cal.once")}
               </div>
             </div>
           )}

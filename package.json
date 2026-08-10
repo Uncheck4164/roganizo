@@ -2,6 +2,8 @@
   "name": "roganizo",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
+  "author": "Ramiro Figueroa (Uncheck4164)",
   "scripts": {
     "dev": "pnpm --filter @roganizo/server dev",
     "dev:web": "pnpm --filter @roganizo/web dev",

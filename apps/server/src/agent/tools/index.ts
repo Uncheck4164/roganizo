@@ -5,7 +5,7 @@ import { config } from "../../config.js";
 import * as calendar from "../../google/calendar.js";
 import * as gtasks from "../../google/tasks.js";
 
-/** Definiciones en formato OpenAI tools (lo que espera OpenRouter). */
+/** Definitions in the OpenAI tools format (what OpenRouter expects). */
 export const toolDefinitions = [
   {
     type: "function",
@@ -294,7 +294,7 @@ export interface PendingRequest {
   summary: string;
 }
 
-/** Tools que cambian algo. Si el modelo dice "listo" sin haber llamado ninguna, mintió. */
+/** Tools that change something. If the model says "done" without calling one, it lied. */
 export const MUTATING_TOOLS = new Set([
   "create_event",
   "update_event",
@@ -311,11 +311,11 @@ export const MUTATING_TOOLS = new Set([
 ]);
 
 export interface ToolContext {
-  /** true cuando se está ejecutando un batch ya confirmado por el usuario */
+  /** true while running a batch the user already confirmed */
   confirmed?: boolean;
-  /** confirmaciones creadas durante el run del agente (el bot les pone botones) */
+  /** confirmations created during the agent run (the bot attaches buttons to them) */
   pending: PendingRequest[];
-  /** nombres de tools mutantes efectivamente ejecutadas en este turno */
+  /** names of the mutating tools actually executed in this turn */
   mutated?: string[];
 }
 
@@ -336,7 +336,7 @@ function createPending(ctx: ToolContext, summary: string, actions: { tool: strin
   };
 }
 
-/** Ejecuta una tool. Las destructivas se desvían a pending_actions salvo ctx.confirmed. */
+/** Runs a tool. Destructive ones are diverted to pending_actions unless ctx.confirmed. */
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -348,10 +348,10 @@ export async function executeTool(
       return calendar.listEvents(String(args.from), String(args.to));
 
     case "create_event": {
-      // Un batch confirmado por botones ya fue aprobado por el usuario tal como
-      // se resumió: no volver a bloquear por conflicto en la ejecución.
+      // A batch confirmed through buttons was already approved by the user
+      // exactly as summarized: do not block it again on conflicts at run time.
       if (!args.allow_overlap && !ctx.confirmed) {
-        // Un evento recurrente nuevo se chequea solo contra su primera instancia
+        // A new recurring event is only checked against its first instance
         const conflicts = await calendar.findConflicts(String(args.start), String(args.end));
         if (conflicts.length > 0) {
           return {

@@ -41,7 +41,7 @@ export async function createTask(
     requestBody: {
       title,
       notes,
-      // Google Tasks solo respeta la fecha (no la hora) del campo due
+      // Google Tasks only honours the date (not the time) of the due field
       due: dueDateISO
         ? DateTime.fromISO(dueDateISO, { zone: config.TIMEZONE }).toUTC().toISO()!
         : undefined,

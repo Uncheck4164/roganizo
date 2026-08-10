@@ -1,16 +1,26 @@
-// Algoritmo de colores por actividad, portado tal cual del diseño "Roganizo Web A":
-// hue determinístico por título + ajuste de luminosidad hasta contraste >= 4.5.
+// Per-activity colour algorithm, ported verbatim from the "Roganizo Web A" design:
+// a deterministic hue per title plus a lightness nudge until contrast >= 4.5.
 
+// English names map to the same hues so demo colours stay stable across languages.
 const HUES: Record<string, number> = {
   Ciencias: 155,
+  Science: 155,
   Matemática: 232,
+  Maths: 232,
   Historia: 32,
+  History: 32,
   Biología: 118,
+  Biology: 118,
   Física: 285,
+  Physics: 285,
   Inglés: 198,
+  English: 198,
   Almuerzo: 58,
+  Lunch: 58,
   Estudiar: 178,
+  Study: 178,
   Gimnasio: 12,
+  Gym: 12,
 };
 
 export const hueFor = (t: string): number =>
@@ -51,8 +61,8 @@ export interface Category {
   stackBg: string;
 }
 
-export function category(title: string, theme: "dark" | "light"): Category {
-  const h = hueFor(title);
+export function category(title: string, theme: "dark" | "light", forcedHue?: number): Category {
+  const h = forcedHue ?? hueFor(title);
   const s = theme === "dark" ? 40 : 56;
   let l = theme === "dark" ? 29 : 84;
   let rgb = hslToRgb(h, s, l);

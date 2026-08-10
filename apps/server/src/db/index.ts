@@ -10,8 +10,8 @@ fs.mkdirSync(path.dirname(path.resolve(config.DATABASE_PATH)), { recursive: true
 const sqlite = new Database(config.DATABASE_PATH);
 sqlite.pragma("journal_mode = WAL");
 
-// Bootstrap idempotente: para una app mono-usuario alcanza con DDL directo,
-// sin pipeline de migraciones.
+// Idempotent bootstrap: for a single-user app plain DDL is enough, no migration
+// pipeline needed.
 sqlite.exec(`
 CREATE TABLE IF NOT EXISTS notes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,9 +47,14 @@ CREATE TABLE IF NOT EXISTS chat_history (
   content TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `);
 
-// Columnas agregadas después del primer release: ALTER idempotente.
+// Columns added after the first release: idempotent ALTERs.
 for (const ddl of [
   "ALTER TABLE reminders ADD COLUMN urgent INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE reminders ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
@@ -60,7 +65,7 @@ for (const ddl of [
   try {
     sqlite.exec(ddl);
   } catch {
-    // la columna ya existe
+    // the column already exists
   }
 }
 

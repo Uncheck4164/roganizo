@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import { fetchJson, taskDescription, taskPriority, type ApiTask } from "../lib/api";
+import { useI18n, type TKey } from "../lib/i18n";
 import { chipStyle, panelStyle } from "../lib/theme";
 
 interface ApiReminder {
@@ -10,14 +11,14 @@ interface ApiReminder {
   fireAt: string;
 }
 
-function fmtFireAt(iso: string): string {
+function fmtFireAt(iso: string, locale: string): string {
   const d = new Date(iso);
-  const date = new Intl.DateTimeFormat("es-CL", {
+  const date = new Intl.DateTimeFormat(locale, {
     weekday: "short",
     day: "numeric",
     month: "short",
   }).format(d);
-  const time = new Intl.DateTimeFormat("es-CL", {
+  const time = new Intl.DateTimeFormat(locale, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -27,11 +28,12 @@ function fmtFireAt(iso: string): string {
 
 type Filter = "all" | "high" | "week";
 
-function fmtDue(due?: string): string {
-  if (!due) return "sin fecha";
-  const d = new Date(due);
-  return new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short" }).format(d);
-}
+/** Priority keys come from the bot in Spanish; the label is translated on screen. */
+const PRIO_LABEL: Record<"Alta" | "Media" | "Baja", TKey> = {
+  Alta: "prio.high",
+  Media: "prio.medium",
+  Baja: "prio.low",
+};
 
 function dueSoon(due?: string): boolean {
   if (!due) return false;
@@ -40,7 +42,14 @@ function dueSoon(due?: string): boolean {
 }
 
 export default function TodosView() {
+  const { t, locale } = useI18n();
   const [filter, setFilter] = useState<Filter>("all");
+
+  const fmtDue = (due?: string): string => {
+    if (!due) return t("todos.noDue");
+    return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(new Date(due));
+  };
+
   const tasks = useQuery({
     queryKey: ["tasks"],
     queryFn: () => fetchJson<ApiTask[]>("/api/tasks"),
@@ -68,31 +77,33 @@ export default function TodosView() {
     <div style={{ maxWidth: "860px", display: "flex", flexDirection: "column", gap: "22px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
         <button onClick={() => setFilter("all")} style={chipStyle(filter === "all")}>
-          Todas
+          {t("todos.filter.all")}
         </button>
         <button onClick={() => setFilter("high")} style={chipStyle(filter === "high")}>
-          Prioridad alta
+          {t("todos.filter.high")}
         </button>
         <button onClick={() => setFilter("week")} style={chipStyle(filter === "week")}>
-          Esta semana
+          {t("todos.filter.week")}
         </button>
       </div>
 
       <div className="rg-panel" style={{ ...panelStyle, padding: "10px 28px" }}>
         {tasks.isLoading && (
-          <div style={{ padding: "24px 0", fontSize: "14px", color: "var(--muted)" }}>Cargando…</div>
+          <div style={{ padding: "24px 0", fontSize: "14px", color: "var(--muted)" }}>
+            {t("common.loading")}
+          </div>
         )}
         {!tasks.isLoading && pending.length === 0 && (
           <div style={{ padding: "24px 0", fontSize: "14px", color: "var(--muted)" }}>
-            Nada pendiente por acá 🎉
+            {t("todos.empty")}
           </div>
         )}
-        {pending.map((t) => {
-          const prio = taskPriority(t);
-          const desc = taskDescription(t);
+        {pending.map((task) => {
+          const prio = taskPriority(task);
+          const desc = taskDescription(task);
           return (
             <div
-              key={t.id}
+              key={task.id}
               className="rg-todo-row"
               style={{
                 display: "grid",
@@ -113,7 +124,7 @@ export default function TodosView() {
                 }}
               />
               <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-                <span style={{ fontSize: "17px", lineHeight: 1.35 }}>{t.title}</span>
+                <span style={{ fontSize: "17px", lineHeight: 1.35 }}>{task.title}</span>
                 {desc && (
                   <span style={{ fontSize: "14px", lineHeight: 1.6, color: "var(--muted)", textWrap: "pretty" }}>
                     {desc}
@@ -135,7 +146,7 @@ export default function TodosView() {
                         display: "inline-block",
                       }}
                     />
-                    {prio}
+                    {t(PRIO_LABEL[prio])}
                   </span>
                 )}
                 <span
@@ -148,7 +159,7 @@ export default function TodosView() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {fmtDue(t.due)}
+                  {fmtDue(task.due)}
                 </span>
               </div>
             </div>
@@ -159,7 +170,7 @@ export default function TodosView() {
       {(reminders.data?.length ?? 0) > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <span style={{ fontSize: "13px", color: "var(--muted)", paddingLeft: "4px" }}>
-            Recordatorios programados
+            {t("todos.reminders")}
           </span>
           <div className="rg-panel" style={{ ...panelStyle, padding: "6px 28px" }}>
             {reminders.data!.map((r) => (
@@ -187,7 +198,7 @@ export default function TodosView() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {fmtFireAt(r.fireAt)}
+                  {fmtFireAt(r.fireAt, locale)}
                 </span>
               </div>
             ))}
@@ -197,11 +208,13 @@ export default function TodosView() {
 
       {done.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <span style={{ fontSize: "13px", color: "var(--muted)", paddingLeft: "4px" }}>Completadas</span>
+          <span style={{ fontSize: "13px", color: "var(--muted)", paddingLeft: "4px" }}>
+            {t("todos.done")}
+          </span>
           <div style={{ borderRadius: "26px", padding: "6px 28px", background: "var(--chip)" }}>
-            {done.map((t) => (
+            {done.map((task) => (
               <div
-                key={t.id}
+                key={task.id}
                 className="rg-todo-row"
                 style={{
                   display: "grid",
@@ -222,8 +235,8 @@ export default function TodosView() {
                     opacity: 0.55,
                   }}
                 />
-                <span style={{ fontSize: "16px", textDecoration: "line-through" }}>{t.title}</span>
-                <span style={{ fontSize: "13px" }}>{fmtDue(t.due)}</span>
+                <span style={{ fontSize: "16px", textDecoration: "line-through" }}>{task.title}</span>
+                <span style={{ fontSize: "13px" }}>{fmtDue(task.due)}</span>
               </div>
             ))}
           </div>

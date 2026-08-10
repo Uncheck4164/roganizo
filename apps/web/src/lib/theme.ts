@@ -1,4 +1,4 @@
-// Paletas del diseño "Roganizo Web A".
+// Palettes from the "Roganizo Web A" design.
 export type Theme = "dark" | "light";
 
 export const DARK: Record<string, string> = {

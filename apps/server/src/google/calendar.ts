@@ -45,7 +45,7 @@ export interface CreateEventInput {
   title: string;
   startISO: string;
   endISO: string;
-  /** ej: "RRULE:FREQ=WEEKLY;BYDAY=TU" para repetición semanal */
+  /** e.g. "RRULE:FREQ=WEEKLY;BYDAY=TU" for a weekly repetition */
   rrule?: string;
   description?: string;
 }
@@ -106,7 +106,7 @@ export interface FreeSlot {
   minutes: number;
 }
 
-/** Huecos libres de un día entre dayStart y dayEnd (horas locales). */
+/** Free slots of a day between dayStart and dayEnd (local hours). */
 export async function findFreeSlots(
   dateISO: string,
   minMinutes = 30,

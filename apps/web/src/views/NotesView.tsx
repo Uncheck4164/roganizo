@@ -1,26 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchJson, type ApiNote } from "../lib/api";
+import { useI18n } from "../lib/i18n";
 import { panelStyle } from "../lib/theme";
 
-function fmtDate(iso: string): string {
-  return new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short" }).format(new Date(iso));
-}
-
 export default function NotesView() {
+  const { t, locale } = useI18n();
   const notes = useQuery({
     queryKey: ["notes"],
     queryFn: () => fetchJson<ApiNote[]>("/api/notes"),
   });
 
+  const fmtDate = (iso: string): string =>
+    new Intl.DateTimeFormat(locale, { day: "2-digit", month: "short" }).format(new Date(iso));
+
   if (notes.isLoading)
-    return <div style={{ fontSize: "14px", color: "var(--muted)" }}>Cargando…</div>;
+    return <div style={{ fontSize: "14px", color: "var(--muted)" }}>{t("common.loading")}</div>;
 
   if (!notes.data || notes.data.length === 0)
-    return (
-      <div style={{ fontSize: "15px", color: "var(--muted)" }}>
-        Sin notas todavía. Decile al bot "guardá una nota…" y aparece acá.
-      </div>
-    );
+    return <div style={{ fontSize: "15px", color: "var(--muted)" }}>{t("notes.empty")}</div>;
 
   return (
     <div

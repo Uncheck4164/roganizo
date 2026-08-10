@@ -1,4 +1,4 @@
-/* Estilos globales del diseño "Roganizo Web A" */
+/* Global styles from the "Roganizo Web A" design */
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -67,7 +67,14 @@ a:hover { filter: brightness(1.15); }
 .rg-nowline { position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px solid var(--warn); z-index: 6; pointer-events: none; }
 .rg-nowchip { position: absolute; left: 0; top: 0; transform: translateY(-50%); background: var(--warn); color: var(--warn-fg); font-size: 10.5px; font-weight: 400; letter-spacing: .02em; border-radius: 999px; padding: 2px 7px; }
 
-/* Mobile (del diseño Web A actualizado) */
+@keyframes rg-spin { to { transform: rotate(360deg); } }
+
+/* Settings inputs keep the palette instead of the UA defaults */
+.rg-set-row input:focus-visible, .rg-set-row select:focus-visible { border-color: var(--accent) !important; }
+.rg-set-row input::placeholder { color: var(--faint); }
+.rg-set-row select option { background: var(--panel); color: var(--fg); }
+
+/* Mobile (from the updated Web A design) */
 @media (max-width: 760px) {
   .rg-header { padding: 26px 16px 0 !important; gap: 14px !important; }
   .rg-logo { height: 30px !important; }
@@ -83,6 +90,7 @@ a:hover { filter: brightness(1.15); }
   .rg-note { padding: 20px !important; border-radius: 20px !important; min-height: 0 !important; }
   .rg-todo-row { grid-template-columns: 18px 1fr !important; gap: 12px !important; padding: 18px 0 !important; }
   .rg-todo-meta { grid-column: 2 !important; flex-wrap: wrap; }
+  .rg-set-row { grid-template-columns: 1fr !important; padding: 16px 0 !important; }
   .rg-pop { position: fixed !important; left: 12px !important; right: 12px !important; top: auto !important; bottom: 12px !important; width: auto !important; z-index: 60 !important; }
   .rg-cal { min-height: 440px !important; }
   .fc .fc-toolbar { flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: .8em !important; }

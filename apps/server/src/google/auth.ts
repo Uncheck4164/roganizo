@@ -51,7 +51,7 @@ export function isGoogleConnected(): boolean {
   );
 }
 
-/** Cliente autenticado; googleapis refresca el access token solo. */
+/** Authenticated client; googleapis refreshes the access token on its own. */
 export function getAuthedClient() {
   const row = db
     .select()
