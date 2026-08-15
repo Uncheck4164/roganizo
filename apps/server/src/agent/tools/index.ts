@@ -4,6 +4,7 @@ import { db, schema } from "../../db/index.js";
 import { config } from "../../config.js";
 import * as calendar from "../../google/calendar.js";
 import * as gtasks from "../../google/tasks.js";
+import type { PlanAction } from "../plan.js";
 
 /** Definitions in the OpenAI tools format (what OpenRouter expects). */
 export const toolDefinitions = [
@@ -28,7 +29,7 @@ export const toolDefinitions = [
     function: {
       name: "create_event",
       description:
-        "Crea un evento en Google Calendar. Para horarios que se repiten cada semana usá rrule (ej: 'RRULE:FREQ=WEEKLY;BYDAY=MO'). Verifica conflictos de horario: si hay solape devuelve conflict=true y NO crea; avisale al usuario y sugerí alternativa. Solo repetí con allow_overlap=true si el usuario insiste.",
+        "PROPONE crear un evento en Google Calendar: NO lo crea, lo deja en una tarjeta que el usuario confirma con un botón. Antes de llamarla tenés que haber leído ese día con get_events o find_free_slots EN ESTE MISMO TURNO (si no, la tool falla). Para horarios semanales usá rrule (ej: 'RRULE:FREQ=WEEKLY;BYDAY=MO').",
       parameters: {
         type: "object",
         properties: {
@@ -47,7 +48,8 @@ export const toolDefinitions = [
     type: "function",
     function: {
       name: "update_event",
-      description: "Modifica un evento existente (obtené el event_id con get_events).",
+      description:
+        "PROPONE modificar un evento existente (obtené el event_id con get_events en este mismo turno). No se aplica hasta que el usuario confirme con el botón. Para mover algo de horario esta es la tool correcta: NO borres y vuelvas a crear.",
       parameters: {
         type: "object",
         properties: {
@@ -67,12 +69,18 @@ export const toolDefinitions = [
     function: {
       name: "delete_event",
       description:
-        "Borra un evento del calendario. Requiere confirmación del usuario por botones: el resultado será pending y el usuario debe tocar Confirmar.",
+        "PROPONE borrar un evento del calendario. El event_id tiene que venir de un get_events o find_duplicate_events de ESTE turno: si es viejo o inventado, la tool falla. No se borra nada hasta que el usuario confirme con el botón.",
       parameters: {
         type: "object",
         properties: {
           event_id: { type: "string" },
           title: { type: "string", description: "Título del evento (para mostrar en la confirmación)" },
+          start: { type: "string", description: "Inicio del evento, para mostrarlo en la confirmación" },
+          series: {
+            type: "boolean",
+            description:
+              "true si el id es de una serie repetida completa (borra todas sus repeticiones). Copialo de find_duplicate_events.",
+          },
         },
         required: ["event_id"],
       },
@@ -99,13 +107,13 @@ export const toolDefinitions = [
     function: {
       name: "propose_batch",
       description:
-        "OBLIGATORIO cuando vas a crear 3 o más eventos de una vez (ej: cargar un horario completo): en lugar de llamar create_event repetidamente, pasá acá la lista completa. El usuario verá un resumen con botones Confirmar/Cancelar y las acciones se ejecutan solo si confirma.",
+        "Propone varios cambios de calendario de una vez (ej: cargar un horario completo o limpiar duplicados). Preferila a llamar create_event/update_event/delete_event uno por uno: el usuario ve UNA sola tarjeta con todo y confirma una vez. Nada se ejecuta hasta que confirme.",
       parameters: {
         type: "object",
         properties: {
           summary: {
             type: "string",
-            description: "Resumen legible de lo que se va a crear, una línea por evento",
+            description: "Una frase corta explicando el objetivo del plan (el detalle lo arma el sistema)",
           },
           actions: {
             type: "array",
@@ -120,6 +128,22 @@ export const toolDefinitions = [
           },
         },
         required: ["summary", "actions"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_duplicate_events",
+      description:
+        "Busca eventos repetidos (mismo título y mismo horario exacto) en un rango. Devuelve, para cada repetición, qué ids hay que borrar para que quede una sola copia. Usalo cuando el usuario diga que hay cosas duplicadas o que el calendario está desordenado, y después pasá esos ids a propose_batch como delete_event.",
+      parameters: {
+        type: "object",
+        properties: {
+          from: { type: "string", description: "Inicio del rango, ISO 8601" },
+          to: { type: "string", description: "Fin del rango, ISO 8601" },
+        },
+        required: ["from", "to"],
       },
     },
   },
@@ -292,6 +316,10 @@ export const toolDefinitions = [
 export interface PendingRequest {
   id: number;
   summary: string;
+  /** Cards retired by this one; their Telegram messages get marked as replaced. */
+  supersededIds: number[];
+  /** Validation found errors: the card is informative, Confirm will refuse. */
+  blocked: boolean;
 }
 
 /** Tools that change something. If the model says "done" without calling one, it lied. */
@@ -310,57 +338,134 @@ export const MUTATING_TOOLS = new Set([
   "delete_reminder",
 ]);
 
+/** Everything that touches Google Calendar always goes through a confirmation. */
+const CALENDAR_WRITES = new Set(["create_event", "update_event", "delete_event"]);
+
+/** Low-stakes and easy to undo: these run right away, no card needed. */
+const IMMEDIATE_TOOLS = new Set([
+  "create_task",
+  "complete_task",
+  "create_note",
+  "update_note",
+  "create_reminder",
+]);
+
 export interface ToolContext {
   /** true while running a batch the user already confirmed */
   confirmed?: boolean;
-  /** confirmations created during the agent run (the bot attaches buttons to them) */
-  pending: PendingRequest[];
-  /** names of the mutating tools actually executed in this turn */
+  /** mutating tools called this turn, whether they ran or were only staged */
   mutated?: string[];
+  /** mutating tools that really changed something (nothing staged is here) */
+  executed?: string[];
+  /** calendar changes proposed in this turn, merged into a single card at the end */
+  staged?: PlanAction[];
+  /** set once the plan is final: further staging would duplicate it */
+  planFrozen?: boolean;
+  /** days already read in this turn (YYYY-MM-DD), for the read-before-write rule */
+  readDays?: Set<string>;
+  /** event ids seen in this turn, so stale/invented ids cannot be used */
+  knownEventIds?: Set<string>;
 }
 
 const now = () => new Date().toISOString();
 
-function createPending(ctx: ToolContext, summary: string, actions: { tool: string; args: unknown }[]) {
-  const row = db
-    .insert(schema.pendingActions)
-    .values({ actionsJson: JSON.stringify(actions), summary, createdAt: now() })
-    .returning()
-    .get();
-  ctx.pending.push({ id: row.id, summary });
+/** Returned once the turn's plan is closed, so a retry cannot double it up. */
+const PLAN_FROZEN = {
+  error:
+    "El plan de este turno ya está cerrado y el usuario lo va a ver tal cual. No agregues más acciones: " +
+    "respondé solo con texto. Si falta algo, se lo decís y lo hacés en el próximo mensaje.",
+};
+
+const dayOf = (iso: unknown) =>
+  DateTime.fromISO(String(iso ?? ""), { zone: config.TIMEZONE }).toISODate() ?? "";
+
+/** Remembers what the model has actually looked at, so writes can require it. */
+function rememberRead(ctx: ToolContext, events: calendar.EventSummary[], fromISO: string, toISO: string) {
+  ctx.readDays ??= new Set();
+  ctx.knownEventIds ??= new Set();
+  let cursor = DateTime.fromISO(fromISO, { zone: config.TIMEZONE }).startOf("day");
+  const end = DateTime.fromISO(toISO, { zone: config.TIMEZONE }).endOf("day");
+  // Guard against a nonsense range asking for thousands of iterations.
+  for (let i = 0; cursor <= end && i < 400; i++, cursor = cursor.plus({ days: 1 })) {
+    ctx.readDays.add(cursor.toISODate()!);
+  }
+  for (const ev of events) {
+    ctx.knownEventIds.add(ev.id);
+    if (ev.seriesId) ctx.knownEventIds.add(ev.seriesId);
+  }
+}
+
+/**
+ * Stages a calendar change instead of running it. The whole turn produces ONE
+ * confirmation card (see agent.ts), which is what stops the user from having
+ * several live versions of the same plan and confirming them all.
+ */
+function stage(ctx: ToolContext, action: PlanAction) {
+  if (ctx.planFrozen) return PLAN_FROZEN;
+  (ctx.staged ??= []).push(action);
   return {
-    pending: true,
-    pending_id: row.id,
+    staged: true,
+    position: ctx.staged.length,
     message:
-      "Acción en espera de confirmación: el usuario verá botones Confirmar/Cancelar. No asumas que se ejecutó.",
+      "Anotado en el plan. NO está hecho: al final del turno el usuario verá una sola tarjeta con todo y tendrá que confirmar. " +
+      "No digas que ya lo hiciste; decile qué vas a hacer y que confirme con el botón.",
   };
 }
 
-/** Runs a tool. Destructive ones are diverted to pending_actions unless ctx.confirmed. */
+/** Read-before-write: refuses to plan a change on a day the model has not read. */
+function requireRead(ctx: ToolContext, isoDates: unknown[]): { error: string } | null {
+  const missing = isoDates
+    .map(dayOf)
+    .filter((d) => d && !(ctx.readDays?.has(d) ?? false));
+  if (missing.length === 0) return null;
+  return {
+    error:
+      `Todavía no leíste el calendario de ${[...new Set(missing)].join(", ")} en este turno. ` +
+      "Llamá primero a get_events (o find_free_slots) de esos días y después volvé a proponer el cambio.",
+  };
+}
+
+/** Refuses ids the model did not obtain from a read in this same turn. */
+function requireKnownId(ctx: ToolContext, id: string): { error: string } | null {
+  if (ctx.knownEventIds?.has(id)) return null;
+  return {
+    error:
+      `El id "${id}" no salió de ninguna lectura de este turno, así que puede ser viejo o inventado. ` +
+      "Llamá a get_events del día correspondiente (o find_duplicate_events) y usá el id que devuelva.",
+  };
+}
+
+/** Runs a tool. Calendar writes are staged for confirmation unless ctx.confirmed. */
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<unknown> {
-  if (MUTATING_TOOLS.has(name)) (ctx.mutated ??= []).push(name);
+  if (MUTATING_TOOLS.has(name)) {
+    (ctx.mutated ??= []).push(name);
+    if (ctx.confirmed || IMMEDIATE_TOOLS.has(name)) (ctx.executed ??= []).push(name);
+  }
   switch (name) {
-    case "get_events":
-      return calendar.listEvents(String(args.from), String(args.to));
+    case "get_events": {
+      const events = await calendar.listEvents(String(args.from), String(args.to));
+      rememberRead(ctx, events, String(args.from), String(args.to));
+      return events;
+    }
 
     case "create_event": {
-      // A batch confirmed through buttons was already approved by the user
-      // exactly as summarized: do not block it again on conflicts at run time.
-      if (!args.allow_overlap && !ctx.confirmed) {
-        // A new recurring event is only checked against its first instance
-        const conflicts = await calendar.findConflicts(String(args.start), String(args.end));
-        if (conflicts.length > 0) {
-          return {
-            conflict: true,
-            message: "NO se creó el evento: se solapa con los siguientes. Avisá al usuario y sugerí otro horario (o repetí con allow_overlap=true si insiste).",
-            conflicts,
-          };
-        }
+      if (!ctx.confirmed) {
+        const blocked = requireRead(ctx, [args.start]);
+        if (blocked) return blocked;
+        return stage(ctx, { tool: "create_event", args });
       }
+      // Confirmed run: never produce a byte-identical twin, even if the user
+      // confirmed the same plan twice.
+      const duplicate = await calendar.findExactDuplicate(
+        String(args.title),
+        String(args.start),
+        String(args.end),
+      );
+      if (duplicate) return { skipped_duplicate: true, existing_id: duplicate.id };
       return calendar.createEvent({
         title: String(args.title),
         startISO: String(args.start),
@@ -370,34 +475,93 @@ export async function executeTool(
       });
     }
 
-    case "update_event":
-      return calendar.updateEvent(String(args.event_id), {
+    case "update_event": {
+      const eventId = String(args.event_id ?? "");
+      if (!ctx.confirmed) {
+        const unknown = requireKnownId(ctx, eventId);
+        if (unknown) return unknown;
+        if (args.start) {
+          const blocked = requireRead(ctx, [args.start]);
+          if (blocked) return blocked;
+        }
+        return stage(ctx, { tool: "update_event", args });
+      }
+      if (!(await calendar.getEvent(eventId))) return { gone: true };
+      return calendar.updateEvent(eventId, {
         title: args.title as string | undefined,
         startISO: args.start as string | undefined,
         endISO: args.end as string | undefined,
         rrule: args.rrule as string | undefined,
         description: args.description as string | undefined,
       });
+    }
 
     case "delete_event": {
+      const eventId = String(args.event_id ?? "");
       if (!ctx.confirmed) {
-        return createPending(ctx, `🗑 Borrar evento: ${args.title ?? args.event_id}`, [
-          { tool: "delete_event", args },
-        ]);
+        const unknown = requireKnownId(ctx, eventId);
+        if (unknown) return unknown;
+        return stage(ctx, { tool: "delete_event", args });
       }
-      await calendar.deleteEvent(String(args.event_id));
+      if (!(await calendar.getEvent(eventId))) return { gone: true };
+      await calendar.deleteEvent(eventId);
       return { deleted: true };
     }
 
-    case "find_free_slots":
-      return calendar.findFreeSlots(
-        String(args.date),
-        args.min_minutes ? Number(args.min_minutes) : 30,
-      );
+    case "find_free_slots": {
+      const date = String(args.date);
+      const slots = await calendar.findFreeSlots(date, args.min_minutes ? Number(args.min_minutes) : 30);
+      // The day was inspected, but no ids came back: only creates are unlocked.
+      const day = DateTime.fromISO(date, { zone: config.TIMEZONE });
+      if (day.isValid) (ctx.readDays ??= new Set()).add(day.toISODate()!);
+      return slots;
+    }
+
+    case "find_duplicate_events": {
+      const report = await calendar.findDuplicates(String(args.from), String(args.to));
+      rememberRead(ctx, report.groups.flatMap((g) => g.copies), String(args.from), String(args.to));
+      for (const d of report.deletions) ctx.knownEventIds!.add(d.id);
+      return {
+        duplicated_groups: report.groups.length,
+        // Shaped so each entry can be copied straight into a delete_event action.
+        delete_these: report.deletions.map((d) => ({
+          event_id: d.id,
+          title: d.title,
+          start: d.when,
+          series: d.kind === "series",
+        })),
+        message: report.deletions.length
+          ? "Copiá cada entrada de delete_these como args de un delete_event dentro de propose_batch (incluí 'series' tal cual): " +
+            "así queda una sola copia de cada cosa. series=true borra la repetición completa."
+          : "No hay duplicados en ese rango.",
+      };
+    }
 
     case "propose_batch": {
-      const actions = args.actions as { tool: string; args: Record<string, unknown> }[];
-      return createPending(ctx, String(args.summary), actions);
+      if (ctx.planFrozen) return PLAN_FROZEN;
+      const actions = (args.actions ?? []) as PlanAction[];
+      if (!Array.isArray(actions) || actions.length === 0) {
+        return { error: "propose_batch necesita al menos una acción en 'actions'." };
+      }
+      for (const action of actions) {
+        if (!CALENDAR_WRITES.has(action.tool)) {
+          return { error: `propose_batch solo acepta create_event, update_event y delete_event (vino "${action.tool}").` };
+        }
+        if (action.tool === "create_event") {
+          const blocked = requireRead(ctx, [action.args?.start]);
+          if (blocked) return blocked;
+        } else {
+          const unknown = requireKnownId(ctx, String(action.args?.event_id ?? ""));
+          if (unknown) return unknown;
+        }
+      }
+      (ctx.staged ??= []).push(...actions);
+      return {
+        staged: true,
+        count: actions.length,
+        message:
+          "Plan anotado. NO está hecho: el usuario verá una sola tarjeta con el detalle y tendrá que confirmar.",
+      };
     }
 
     case "list_tasks":
@@ -415,11 +579,7 @@ export async function executeTool(
       return { completed: true };
 
     case "delete_task": {
-      if (!ctx.confirmed) {
-        return createPending(ctx, `🗑 Borrar to-do: ${args.title ?? args.task_id}`, [
-          { tool: "delete_task", args },
-        ]);
-      }
+      if (!ctx.confirmed) return stage(ctx, { tool: "delete_task", args });
       await gtasks.deleteTask(String(args.task_id));
       return { deleted: true };
     }
@@ -464,11 +624,7 @@ export async function executeTool(
     }
 
     case "delete_note": {
-      if (!ctx.confirmed) {
-        return createPending(ctx, `🗑 Borrar nota: ${args.title ?? args.note_id}`, [
-          { tool: "delete_note", args },
-        ]);
-      }
+      if (!ctx.confirmed) return stage(ctx, { tool: "delete_note", args });
       db.delete(schema.notes).where(eq(schema.notes.id, Number(args.note_id))).run();
       return { deleted: true };
     }
@@ -497,11 +653,7 @@ export async function executeTool(
         .all();
 
     case "delete_reminder": {
-      if (!ctx.confirmed) {
-        return createPending(ctx, `🗑 Borrar recordatorio: ${args.message ?? args.reminder_id}`, [
-          { tool: "delete_reminder", args },
-        ]);
-      }
+      if (!ctx.confirmed) return stage(ctx, { tool: "delete_reminder", args });
       db.delete(schema.reminders)
         .where(eq(schema.reminders.id, Number(args.reminder_id)))
         .run();

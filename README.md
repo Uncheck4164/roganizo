@@ -204,7 +204,32 @@ First run: send `/start` to the bot → it replies with a link to connect Google
 
 - `/start` — welcome message, plus the Google connection link if it is missing
 - `/web` — link to the web panel
-- `/reset` — clears the conversation memory
+- `/duplicates` — scans the next 60 days for events repeated with the same title and time,
+  and offers a one-tap cleanup that leaves a single copy of each
+- `/diag` — one real round trip to OpenRouter: model, provider that answered, latency and cost
+- `/reset` — clears the conversation memory and any confirmation still waiting
+
+## How calendar changes are confirmed
+
+Nothing reaches Google Calendar without you tapping a button:
+
+- Every create, move and delete the assistant decides on is **staged**, not executed. At the
+  end of the turn you get **one card** listing the changes numbered and grouped by day, with
+  Confirm / Cancel.
+- Before staging anything, the assistant is *forced* to read the affected days
+  (`get_events` / `find_free_slots`) in that same turn — and event ids must come from that
+  read, so stale ids can no longer produce a wall of "Not Found".
+- The plan is then validated against the real calendar: missing events, times that end before
+  they start, actions repeated inside the plan, exact duplicates and overlaps are shown on the
+  card. Errors block confirmation; warnings are just flagged. When something is wrong, the
+  model gets its own plan back with the problems and has to fix it before you see it.
+- Proposing a new plan **supersedes** the previous card, so two versions of the same schedule
+  can never both be confirmed — which is how events used to end up duplicated.
+- On confirmation, an event identical to one already in the calendar is skipped instead of
+  duplicated, and deleting something that is already gone is reported as such, not as an error.
+
+To-dos, notes and reminders are lower stakes and still run immediately; deleting them asks
+first, like calendar changes.
 
 ## Architecture
 

@@ -22,14 +22,22 @@ export const reminders = sqliteTable("reminders", {
   ackedAt: text("acked_at"),
 });
 
-// Large operations waiting for Confirm/Cancel through inline buttons
+// Changes waiting for Confirm/Cancel through inline buttons. At most one row is
+// "pending" at a time: proposing a new plan supersedes the previous one, so the
+// user can never confirm two versions of the same schedule.
 export const pendingActions = sqliteTable("pending_actions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   // JSON: [{ tool, args }, ...]
   actionsJson: text("actions_json").notNull(),
   summary: text("summary").notNull(),
-  status: text("status").notNull().default("pending"), // pending | confirmed | cancelled | expired
+  // pending | confirmed | cancelled | superseded | expired
+  status: text("status").notNull().default("pending"),
   createdAt: text("created_at").notNull(),
+  // 1 when validation found errors: the card is shown but cannot be confirmed.
+  blocked: integer("blocked").notNull().default(0),
+  // Telegram message showing this card, so an outdated one can be edited.
+  chatId: text("chat_id"),
+  messageId: integer("message_id"),
 });
 
 export const googleTokens = sqliteTable("google_tokens", {

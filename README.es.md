@@ -207,7 +207,33 @@ Primer uso: mandale `/start` al bot → te da el link para conectar Google → l
 
 - `/start` — bienvenida y conexión con Google si falta
 - `/web` — link al panel
-- `/reset` — borra la memoria de conversación
+- `/duplicados` (o `/duplicates`) — busca eventos repetidos con el mismo título y horario en
+  los próximos 60 días y propone dejar una sola copia de cada uno, con un solo toque
+- `/diag` — una llamada real a OpenRouter: modelo, proveedor que respondió, latencia y costo
+- `/reset` — borra la memoria de conversación y las confirmaciones pendientes
+
+## Cómo se confirman los cambios de calendario
+
+Nada llega a Google Calendar sin que toques un botón:
+
+- Cada creación, movida o borrado que decide el asistente queda **anotado**, no ejecutado. Al
+  final del turno recibís **una sola tarjeta** con los cambios numerados y agrupados por día,
+  con Confirmar / Cancelar.
+- Antes de anotar nada, el asistente está *obligado* a leer los días afectados
+  (`get_events` / `find_free_slots`) en ese mismo turno, y los ids de eventos tienen que salir
+  de esa lectura: así los ids viejos ya no generan una pared de "Not Found".
+- Después el plan se valida contra el calendario real: eventos que ya no existen, horarios que
+  terminan antes de empezar, acciones repetidas dentro del plan, duplicados exactos y solapes
+  se muestran en la tarjeta. Los errores bloquean la confirmación; las advertencias solo se
+  avisan. Si algo está mal, el modelo recibe su propio plan con los problemas y tiene que
+  corregirlo antes de que vos lo veas.
+- Proponer un plan nuevo **anula** la tarjeta anterior, así que nunca se pueden confirmar dos
+  versiones del mismo horario, que es como se duplicaban los eventos.
+- Al confirmar, un evento idéntico a uno que ya está en el calendario se omite en vez de
+  duplicarse, y borrar algo que ya no existe se informa como tal, no como error.
+
+To-dos, notas y recordatorios son de menor riesgo y siguen ejecutándose al toque; borrarlos sí
+pregunta antes, igual que el calendario.
 
 ## Arquitectura
 
