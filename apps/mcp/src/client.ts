@@ -105,10 +105,50 @@ export class RoganizoClient {
     }
   }
 
-  async #raw(path: string, auth: boolean): Promise<Response | Error> {
+  /**
+   * POST on the instance. Unlike {@link get} a 422 is not a transport failure:
+   * it is the server refusing a plan it validated, and the body explains why,
+   * so it comes back as a normal result for the caller to render.
+   */
+  async post<T>(path: string, body: unknown): Promise<Fetched<T>> {
+    if (!this.#cookie) {
+      const login = await this.login();
+      if (!login.ok) return { ok: false, status: 0, body: login.reason };
+    }
+
+    let res = await this.#raw(path, true, body);
+    if (res instanceof Error) return { ok: false, status: 0, body: res.message };
+
+    if (res.status === 401) {
+      this.#cookie = undefined;
+      const login = await this.login();
+      if (!login.ok) return { ok: false, status: 401, body: login.reason };
+      const retry = await this.#raw(path, true, body);
+      if (retry instanceof Error) return { ok: false, status: 0, body: retry.message };
+      res = retry;
+    }
+
+    const text = await res.text();
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return { ok: false, status: res.status, body: `expected JSON, got: ${truncate(text)}` };
+    }
+    // 422 carries the validated plan, which the caller needs to see in full.
+    if (!res.ok && res.status !== 422) return { ok: false, status: res.status, body: truncate(text) };
+    return { ok: true, status: res.status, data: data as T };
+  }
+
+  async #raw(path: string, auth: boolean, body?: unknown): Promise<Response | Error> {
     try {
       return await fetch(`${this.baseUrl}${path}`, {
-        headers: auth && this.#cookie ? { Cookie: this.#cookie } : {},
+        method: body === undefined ? "GET" : "POST",
+        headers: {
+          ...(auth && this.#cookie ? { Cookie: this.#cookie } : {}),
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (err) {
       return new Error(`${this.baseUrl}${path} is unreachable: ${(err as Error).message}`);

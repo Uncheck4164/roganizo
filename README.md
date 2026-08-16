@@ -216,10 +216,11 @@ First run: send `/start` to the bot → it replies with a link to connect Google
 
 ## MCP server
 
-`apps/mcp` lets an MCP client (Claude Code, Claude Desktop, …) read a running instance directly:
-events, to-dos, notes, reminders, stats, and a `health` tool that probes every endpoint and says
-what is broken. It is read-only by design — calendar changes stay behind the Telegram
-confirmation card. Setup and tool reference: **[docs/mcp.md](docs/mcp.md)**.
+`apps/mcp` lets an MCP client (Claude Code, Claude Desktop, …) work with a running instance
+directly: events, to-dos, notes, reminders, stats, a `health` tool that probes every endpoint and
+says what is broken, and calendar writes that go through the same validation as the Telegram
+confirmation card — with warnings refusing the plan unless they are explicitly acknowledged.
+Setup and tool reference: **[docs/mcp.md](docs/mcp.md)**.
 
 ## How calendar changes are confirmed
 

@@ -220,11 +220,11 @@ Primer uso: mandale `/start` al bot → te da el link para conectar Google → l
 
 ## Servidor MCP
 
-`apps/mcp` le permite a un cliente MCP (Claude Code, Claude Desktop, …) leer una instancia en
-vivo: eventos, to-dos, notas, recordatorios, stats, y un tool `health` que sondea todos los
-endpoints y dice qué está roto. Es de solo lectura a propósito: los cambios de calendario siguen
-pasando por la tarjeta de confirmación de Telegram. Setup y referencia de tools:
-**[docs/mcp.md](docs/mcp.md)**.
+`apps/mcp` le permite a un cliente MCP (Claude Code, Claude Desktop, …) trabajar con una instancia
+en vivo: eventos, to-dos, notas, recordatorios, stats, un tool `health` que sondea todos los
+endpoints y dice qué está roto, y escritura de calendario que pasa por la misma validación que la
+tarjeta de confirmación de Telegram — con las advertencias rechazando el plan salvo que se las
+reconozca explícitamente. Setup y referencia de tools: **[docs/mcp.md](docs/mcp.md)**.
 
 ## Cómo se confirman los cambios de calendario
 

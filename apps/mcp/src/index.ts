@@ -71,6 +71,22 @@ function createServer(): McpServer {
   );
 
   server.registerTool(
+    "event",
+    {
+      description:
+        "One event by id. Passing a seriesId returns the master of a recurring event, whose start " +
+        "is the anchor the series is generated from. Read it before changing the time of a whole " +
+        "series: reuse that anchor date with the new time, or Google moves the series start and " +
+        "drops every occurrence before it.",
+      inputSchema: {
+        id: z.string().describe("Event id or seriesId, from the `events` tool."),
+      },
+    },
+    async ({ id }) =>
+      present(`GET /api/events/${id}`, await client.get(`/api/events/${encodeURIComponent(id)}`)),
+  );
+
+  server.registerTool(
     "tasks",
     {
       description: "Google Tasks to-dos, including completed ones. Priority is encoded as \"Prioridad: Alta|Media|Baja\" on the first line of the notes.",
@@ -181,6 +197,106 @@ function createServer(): McpServer {
 
       return text(lines.join("\n"), failed.size > 0);
     },
+  );
+
+  const ACTIONS_DOC =
+    "Each action is { tool, args }.\n" +
+    "- create_event: { title, start, end, rrule?, description? }. Times are ISO 8601 in the " +
+    "instance timezone, e.g. \"2026-08-20T20:30:00\". rrule repeats it, e.g. " +
+    "\"RRULE:FREQ=WEEKLY;BYDAY=TH\".\n" +
+    "- update_event: { event_id, title?, start?, end?, rrule?, description? }. Only the fields " +
+    "you pass change.\n" +
+    "- delete_event: { event_id, title?, start?, series? }.\n\n" +
+    "event_id must come from the `events` tool. Passing an occurrence id (the one with the " +
+    "_20260820T… suffix) touches that single occurrence; passing the seriesId touches the whole " +
+    "recurring series, including occurrences already in the past.";
+
+  const actionsShape = {
+    actions: z
+      .array(
+        z.object({
+          tool: z.enum(["create_event", "update_event", "delete_event"]),
+          args: z.record(z.string(), z.unknown()),
+        }),
+      )
+      .min(1)
+      .max(50)
+      .describe("The changes to make, in any order — the server sorts them."),
+  };
+
+  interface PlanResponse {
+    applied: boolean;
+    blocked: boolean;
+    rendered: string;
+    issues: { index: number; level: string; text: string }[];
+    reason?: string;
+    hint?: string;
+    renderedResults?: string;
+  }
+
+  const renderPlanResponse = (r: Fetched<PlanResponse>, what: string): CallToolResult => {
+    if (!r.ok) return present(what, r);
+    const p = r.data;
+    const out = [p.rendered];
+    if (p.applied) {
+      out.push("", p.renderedResults ?? "(applied, no result detail)");
+    } else if (p.blocked) {
+      out.push(
+        "",
+        `NOT APPLIED — ${p.reason === "errors" ? "the plan has errors" : "the plan has warnings"}.`,
+        p.hint ?? "",
+      );
+    } else {
+      out.push("", "Preview only — nothing was written. Call apply_changes to execute it.");
+    }
+    return text(out.join("\n"), p.blocked);
+  };
+
+  server.registerTool(
+    "preview_changes",
+    {
+      description:
+        "Dry run: validates calendar changes against the real calendar and returns the plan with " +
+        "any problems found (stale ids, end before start, actions repeated inside the plan, exact " +
+        "duplicates, overlaps). Writes nothing, ever. Always run this before apply_changes.\n\n" +
+        ACTIONS_DOC,
+      inputSchema: actionsShape,
+    },
+    async ({ actions }) =>
+      renderPlanResponse(
+        await client.post<PlanResponse>("/api/calendar/plan", { actions, apply: false }),
+        "POST /api/calendar/plan (preview)",
+      ),
+  );
+
+  server.registerTool(
+    "apply_changes",
+    {
+      description:
+        "Applies calendar changes for real. The server re-validates first and refuses the whole " +
+        "plan if anything is wrong — nothing is half-applied on a validation failure. Warnings " +
+        "(overlaps, an identical event already there) also refuse the plan unless " +
+        "acknowledgeWarnings is true, so read them before forcing. Creating an event identical to " +
+        "an existing one is skipped rather than duplicated, and deleting something already gone is " +
+        "reported as such.\n\n" +
+        ACTIONS_DOC,
+      inputSchema: {
+        ...actionsShape,
+        acknowledgeWarnings: z
+          .boolean()
+          .optional()
+          .describe("Apply despite warnings. Only after showing them to the user."),
+      },
+    },
+    async ({ actions, acknowledgeWarnings }) =>
+      renderPlanResponse(
+        await client.post<PlanResponse>("/api/calendar/plan", {
+          actions,
+          apply: true,
+          acknowledgeWarnings: acknowledgeWarnings ?? false,
+        }),
+        "POST /api/calendar/plan (apply)",
+      ),
   );
 
   return server;

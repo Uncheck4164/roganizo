@@ -3,22 +3,55 @@
 `apps/mcp` exposes a running Roganizo instance to an MCP client (Claude Code, Claude Desktop,
 any other) so an assistant can read the instance directly instead of being told what it shows.
 
-It is a thin, **read-only** wrapper over the HTTP API the web panel already uses: it logs in with
-the web password, keeps the session cookie, and turns each `GET` into a tool. There are no write
-tools on purpose — every calendar change goes through the confirmation card in Telegram, and an
-MCP tool that created or deleted events would be a way around that.
+It wraps the HTTP API the web panel already uses: it logs in with the web password, keeps the
+session cookie, and turns each endpoint into a tool.
 
 ## Tools
 
-| Tool        | Endpoint            | What it answers                                              |
-| ----------- | ------------------- | ------------------------------------------------------------ |
-| `health`    | all of them         | HTTP status of every endpoint, plus a verdict                 |
-| `status`    | `/api/status`       | bot running, Google linked, timezone, instance clock          |
-| `events`    | `/api/events`       | calendar events in a range (`from`, `to`, or `days`)          |
-| `tasks`     | `/api/tasks`        | Google Tasks to-dos                                           |
-| `notes`     | `/api/notes`        | notes stored in SQLite                                        |
-| `reminders` | `/api/reminders`    | reminders that have not fired                                 |
-| `stats`     | `/api/stats`        | hours per activity and task counts for a week                 |
+| Tool              | Endpoint              | What it answers                                     |
+| ----------------- | --------------------- | --------------------------------------------------- |
+| `health`          | all of them           | HTTP status of every endpoint, plus a verdict        |
+| `status`          | `/api/status`         | bot running, Google linked, timezone, instance clock |
+| `events`          | `/api/events`         | calendar events in a range (`from`, `to`, or `days`) |
+| `event`           | `/api/events/:id`     | one event by id, or a series master by seriesId      |
+| `tasks`           | `/api/tasks`          | Google Tasks to-dos                                  |
+| `notes`           | `/api/notes`          | notes stored in SQLite                               |
+| `reminders`       | `/api/reminders`      | reminders that have not fired                        |
+| `stats`           | `/api/stats`          | hours per activity and task counts for a week        |
+| `preview_changes` | `/api/calendar/plan`  | validates calendar changes, writes nothing           |
+| `apply_changes`   | `/api/calendar/plan`  | applies calendar changes for real                    |
+
+## Writing to the calendar
+
+`preview_changes` and `apply_changes` take a list of `{ tool, args }` actions — `create_event`,
+`update_event`, `delete_event` — and hand them to the *same* validation and the *same* executor
+the Telegram confirmation card uses. What they skip is the human tapping Confirm, so the server
+compensates:
+
+- **Errors always refuse the whole plan**, and nothing is applied: a stale or invented id, an end
+  before its start, the same event created twice inside one plan.
+- **Warnings refuse it too**, unless the call passes `acknowledgeWarnings: true`. Overlaps and
+  "an identical event is already there" land here — things a human would want to see rather than
+  have decided for them.
+- Replaying an apply is safe: creating an event identical to an existing one is skipped rather
+  than duplicated, and deleting something already gone reports as such.
+
+Actions are sorted before running — deletes, then moves, then creates — so a slot freed by the
+same plan is actually free when something is created in it.
+
+Always `preview_changes` first. It runs the full validation and returns the rendered plan without
+touching Google.
+
+### Editing a recurring series
+
+An `event_id` ending in `_20260820T003000Z` is a single occurrence; the `seriesId` is the whole
+series. To change the time of a series, read the master with `event` first and reuse **its**
+start date with the new time. Google generates the series from the master's start, so passing a
+different date moves the anchor and drops every occurrence before it. Changing only the title has
+no such catch.
+
+Note that editing a series changes occurrences already in the past too. Google implements "this
+and all following" by splitting the series, which the app does not do.
 
 ### Start with `health`
 
