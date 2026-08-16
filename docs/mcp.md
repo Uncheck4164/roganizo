@@ -64,22 +64,24 @@ cp apps/mcp/.env.example apps/mcp/.env   # then fill it in
 
 The root `.gitignore` ignores `.env` at any depth, so the password stays out of the repository.
 
-The repo ships an `.mcp.json` that registers the server for MCP clients that read it:
+Then register the server with your client. In Claude Code:
 
-```json
-{
-  "mcpServers": {
-    "roganizo": {
-      "command": "node",
-      "args": ["apps/mcp/dist/index.js"]
-    }
-  }
-}
+```bash
+claude mcp add roganizo --scope user -- node /absolute/path/to/apps/mcp/dist/index.js
 ```
 
-Clients that take their own configuration file want the same command, with an absolute path to
-`apps/mcp/dist/index.js`. Environment variables passed by the client override `apps/mcp/.env`,
-which is the way to point one client at production and another at a local instance.
+Check it with `claude mcp list`, which health-checks every server and should report
+`roganizo — ✔ Connected`.
+
+Use an **absolute** path and `--scope user`. A project-scoped `.mcp.json` works too, but its
+command is resolved against the working directory, so it only starts when the client was opened
+at the repo root — and it stays `⏸ Pending approval` until you approve it at startup, which is
+easy to miss. Do not register it in both scopes: `claude mcp list` reports the two definitions as
+a conflict.
+
+Clients with their own configuration file want the same command and absolute path. Environment
+variables passed by the client override `apps/mcp/.env`, which is the way to point one client at
+production and another at a local instance.
 
 ## Notes
 
