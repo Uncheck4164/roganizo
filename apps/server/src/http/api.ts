@@ -6,7 +6,7 @@ import { db, schema } from "../db/index.js";
 import { config, isPasswordConfigured } from "../config.js";
 import { isGoogleConnected } from "../google/auth.js";
 import { isBotRunning } from "../bot/bot.js";
-import { listEvents } from "../google/calendar.js";
+import { getEvent, listEvents } from "../google/calendar.js";
 import { listTasks } from "../google/tasks.js";
 import { requireSession, setSessionCookie } from "./auth.js";
 
@@ -31,6 +31,7 @@ apiRoutes.post("/login", async (c) => {
 
 // Everything below is READ-ONLY and requires a session. /api/settings is the one
 // exception: it carries its own guard so that it stays reachable during setup.
+// The only write endpoint of the API lives in http/calendar.ts, mounted first.
 apiRoutes.use("/api/*", (c, next) =>
   c.req.path.startsWith("/api/settings") ? next() : requireSession(c, next),
 );
@@ -49,6 +50,14 @@ apiRoutes.get("/api/events", async (c) => {
   const to = c.req.query("to");
   if (!from || !to) return c.json({ error: "from and to are required" }, 400);
   return c.json(await listEvents(from, to));
+});
+
+// One event by id. Passing a seriesId returns the master of a recurring event,
+// whose start is the anchor the whole series is generated from — needed before
+// changing the time of a series, so the anchor is preserved instead of moved.
+apiRoutes.get("/api/events/:id", async (c) => {
+  const event = await getEvent(c.req.param("id"));
+  return event ? c.json(event) : c.json({ error: "not found" }, 404);
 });
 
 apiRoutes.get("/api/tasks", async (c) => c.json(await listTasks(true)));

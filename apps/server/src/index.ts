@@ -8,6 +8,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { oauthRoutes } from "./http/oauth.js";
 import { apiRoutes } from "./http/api.js";
+import { calendarWriteRoutes } from "./http/calendar.js";
 import { onApplyRestart, settingsRoutes } from "./http/settings.js";
 import { bot, setBotRunning } from "./bot/bot.js";
 import { startScheduler } from "./scheduler.js";
@@ -16,6 +17,9 @@ const app = new Hono();
 
 app.get("/health", (c) => c.json({ ok: true }));
 app.route("/", oauthRoutes);
+// Before apiRoutes: it owns /api/calendar/* with its own session guard, so the
+// read-only guard in apiRoutes never sees these requests.
+app.route("/", calendarWriteRoutes);
 app.route("/", apiRoutes);
 // Mounted after apiRoutes so its own guard applies: /setup/status is public and
 // /api/settings stays reachable while no web password exists yet.

@@ -8,6 +8,7 @@
     "dev": "pnpm --filter @roganizo/server dev",
     "dev:web": "pnpm --filter @roganizo/web dev",
     "build": "pnpm --filter @roganizo/web build && pnpm --filter @roganizo/server build",
+    "build:mcp": "pnpm --filter @roganizo/mcp build",
     "start": "pnpm --filter @roganizo/server start",
     "typecheck": "pnpm -r typecheck"
   }

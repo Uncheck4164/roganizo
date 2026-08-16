@@ -142,8 +142,14 @@ terceros; si cambian el flujo de activación, seguí las instrucciones de su sit
    `http`/`https` y el puerto.
 7. Guardá y copiá el **Client ID** (`...apps.googleusercontent.com`) y el **Client secret**
    (`GOCSPX-...`). Esos son `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`.
-8. Andá a **OAuth consent screen** y agregá tu propio Gmail como **test user**. Con eso alcanza:
-   **no** hace falta publicar ni verificar la app, porque sos el único usuario.
+8. Andá a **OAuth consent screen** y tocá **Publish app** para sacarla de *Testing*.
+   **No** hace falta que Google la verifique: sos el único usuario, y el cartel de "app no
+   verificada" se pasa una sola vez con *Configuración avanzada → Ir a Roganizo*.
+
+   > **No la dejes en *Testing*.** Mientras la pantalla de consentimiento está en Testing,
+   > Google vence todos los refresh tokens **a los 7 días**, y a la semana el bot y el panel
+   > web empiezan a contestar `invalid_grant` tanto en Calendar como en Tasks. Agregarte como
+   > test user no lo evita.
 
 ### 3. OpenRouter (el LLM)
 
@@ -211,6 +217,14 @@ Primer uso: mandale `/start` al bot → te da el link para conectar Google → l
   los próximos 60 días y propone dejar una sola copia de cada uno, con un solo toque
 - `/diag` — una llamada real a OpenRouter: modelo, proveedor que respondió, latencia y costo
 - `/reset` — borra la memoria de conversación y las confirmaciones pendientes
+
+## Servidor MCP
+
+`apps/mcp` le permite a un cliente MCP (Claude Code, Claude Desktop, …) trabajar con una instancia
+en vivo: eventos, to-dos, notas, recordatorios, stats, un tool `health` que sondea todos los
+endpoints y dice qué está roto, y escritura de calendario que pasa por la misma validación que la
+tarjeta de confirmación de Telegram — con las advertencias rechazando el plan salvo que se las
+reconozca explícitamente. Setup y referencia de tools: **[docs/mcp.md](docs/mcp.md)**.
 
 ## Cómo se confirman los cambios de calendario
 
