@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "roganizo": {
+      "command": "node",
+      "args": ["apps/mcp/dist/index.js"]
+    }
+  }
+}

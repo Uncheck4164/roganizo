@@ -139,9 +139,14 @@ changes, follow the instructions on their site.
    It must match `PUBLIC_URL` + `/oauth/callback` exactly, including `http`/`https` and the port.
 7. Save and copy the **Client ID** (`...apps.googleusercontent.com`) and the **Client secret**
    (`GOCSPX-...`). Those are `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-8. Go to the **OAuth consent screen** and add your own Gmail address under **Test users**.
-   That is enough — you do **not** need to publish or verify the app, since you are the only
-   user.
+8. Go to the **OAuth consent screen** and press **Publish app** to move it out of *Testing*.
+   You do **not** need Google to verify it — you are the only user, and the "unverified app"
+   warning is a one-time *Advanced → Go to Roganizo* click during authorization.
+
+   > **Do not leave it in *Testing*.** While the consent screen is in Testing, Google expires
+   > every refresh token **after 7 days**, and one week later the bot and the web panel start
+   > answering `invalid_grant` for both Calendar and Tasks. Adding yourself as a test user does
+   > not avoid this.
 
 ### 3. OpenRouter (the LLM)
 
@@ -208,6 +213,13 @@ First run: send `/start` to the bot → it replies with a link to connect Google
   and offers a one-tap cleanup that leaves a single copy of each
 - `/diag` — one real round trip to OpenRouter: model, provider that answered, latency and cost
 - `/reset` — clears the conversation memory and any confirmation still waiting
+
+## MCP server
+
+`apps/mcp` lets an MCP client (Claude Code, Claude Desktop, …) read a running instance directly:
+events, to-dos, notes, reminders, stats, and a `health` tool that probes every endpoint and says
+what is broken. It is read-only by design — calendar changes stay behind the Telegram
+confirmation card. Setup and tool reference: **[docs/mcp.md](docs/mcp.md)**.
 
 ## How calendar changes are confirmed
 
