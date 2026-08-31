@@ -1,4 +1,5 @@
 import { desc, eq, inArray } from "drizzle-orm";
+import { config } from "../config.js";
 import { db, schema } from "../db/index.js";
 import { t } from "../i18n.js";
 import { systemPrompt } from "./prompt.js";
@@ -32,7 +33,7 @@ const MAX_PLAN_REVISIONS = 2;
  * is ASCII-only and breaks with accents ("sumé") and emojis ("Listo ✅").
  */
 const CLAIMS_ACTION =
-  /(^|[^a-záéíóúñ])(cre[eéa]|agend[eéa]|program[eéa]|guard[eéa]|actualic|actualizad|modifiqu|elimin|borr[eéaó]|mov[ií]|extend[ií]|sum[eéo]|añad|qued[oó]|corregid|corrig[ií]|(list|hech)[oa]\s*✅)/i;
+  /(^|[^a-záéíóúñ])(cre[eéa]|agend[eéa]|program[eéa]|guard[eéa]|actualic|actualizad|modifiqu|elimin|borr[eéaó]|mov[ií]|extend[ií]|sum[eéo]|añad|qued[oó]|corregid|corrig[ií]|(list|hech)[oa][^\n]{0,60}✅|te (?:la|lo|las|los) dej[eé])/i;
 
 /**
  * Phrases where the model announces work instead of doing it ("déjame revisar
@@ -48,13 +49,23 @@ const CLAIMS_ACTION =
  * the correct way to describe a plan that is still waiting for confirmation.
  */
 export const CLAIMS_DONE =
-  /(^|[^a-záéíóúñ])((list|hech)[oa]\s*[✅👍]|ya (?:est[áa] (?:list|agendad|cread|guardad)|qued[óo]|lo (?:hice|cre[eé]|agend[eé]|borr[eé]|mov[íi]))|(?:cre[eé]|agend[eé]|program[eé]|guard[eé]|actualic[eé]|modifiqu[eé]|elimin[eé]|borr[eé]|mov[íi]|a[ñn]ad[íi])[^a-záéíóúñ]|qued[óo] (?:agendad|cread|guardad|list)|(?:i )?(?:created|scheduled|deleted|updated|moved) )/i;
+  /(^|[^a-záéíóúñ])((list|hech)[oa][^\n]{0,60}[✅👍]|te (?:la|lo|las|los) dej[eé]|ya (?:est[áa] (?:list|agendad|cread|guardad)|qued[óo]|lo (?:hice|cre[eé]|agend[eé]|borr[eé]|mov[íi]))|(?:cre[eé]|agend[eé]|program[eé]|guard[eé]|actualic[eé]|modifiqu[eé]|elimin[eé]|borr[eé]|mov[íi]|a[ñn]ad[íi])[^a-záéíóúñ]|qued[óo] (?:agendad|cread|guardad|list)|(?:i )?(?:created|scheduled|deleted|updated|moved) )/i;
+
+/**
+ * The reply points the user at a confirmation card: "la tarjeta", "los botones",
+ * "toca Confirmar". Perfectly fine when a card is really going out — a dead end
+ * when the turn staged nothing, because the user then waits forever for buttons
+ * that were never sent. Deliberately narrow: a plain "¿me confirmas la hora?"
+ * is a question, not a reference to a card.
+ */
+export const CLAIMS_CARD =
+  /(tarjeta|botones|bot[oó]n|\bcards?\b|\bbuttons?\b|pendiente de confirmaci[oó]n|esperando (?:tu|su) confirmaci[oó]n|(?:toc[aá]\w*|pulsa\w*|presion\w*|apret\w*|tap|press|click)[^.\n]{0,20}confirm)/i;
 
 export const PROMISES_ACTION =
   /(d[eé]jame|d[eé]me|dame un|permíteme|voy a|ir[eé]|ahora(?: mismo)?|enseguida|en un momento|un segundo|primero|let me|i'?ll|i am going to|i'm going to)\b[^.!?\n]{0,40}?\b(revis|verific|busc|mir|consult|chequ|analiz|fij|comprob|ech[ao] un|check|look|review|take a look)/i;
 
-async function callOpenRouter(messages: ChatMessage[]) {
-  const reply = await callModel(messages, toolDefinitions);
+async function callOpenRouter(messages: ChatMessage[], model?: string) {
+  const reply = await callModel(messages, toolDefinitions, model);
   return reply.message;
 }
 
@@ -182,6 +193,17 @@ export function attachCardMessage(id: number, chatId: string, messageId: number)
     .run();
 }
 
+/** The newest card still waiting for an answer, if there is one. */
+export function livePendingCard(): { id: number; summary: string } | null {
+  const row = db
+    .select()
+    .from(schema.pendingActions)
+    .where(eq(schema.pendingActions.status, "pending"))
+    .orderBy(desc(schema.pendingActions.id))
+    .get();
+  return row ? { id: row.id, summary: row.summary } : null;
+}
+
 export function cardMessage(id: number): { chatId: string; messageId: number; summary: string } | null {
   const row = db
     .select()
@@ -205,7 +227,19 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
   saveMessage(userMsg);
   let corrected = false;
   let claimFixed = false;
+  let cardFixed = false;
   let nudgedToWork = false;
+  // The cheap model runs the turn until something proves it cannot handle it —
+  // a guard trip, or a plan the real calendar rejected. From that point the turn
+  // finishes on the reinforcement model, so the extra cost lands only on the
+  // turns that were going to fail anyway. Empty setting = never escalate.
+  let escalatedTo: string | null = null;
+  const escalate = (why: string) => {
+    const strong = config.OPENROUTER_MODEL_STRONG;
+    if (!strong || escalatedTo || strong === config.OPENROUTER_MODEL) return;
+    escalatedTo = strong;
+    console.warn(`[agent] escalating to ${strong}: ${why}`);
+  };
   let revisions = 0;
   let modelCalls = 0;
   // Validation hits Google once per day touched: do not repeat it for a plan
@@ -214,10 +248,14 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
   let validatedIssues: PlanIssue[] = [];
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const msg = await callOpenRouter(messages);
+    const msg = await callOpenRouter(messages, escalatedTo ?? undefined);
     modelCalls++;
     messages.push(msg);
-    saveMessage(msg);
+    // Only tool calls are persisted as they happen: they must stay paired with
+    // their results. A text reply is saved when the turn really ends with it, so
+    // the drafts rejected by the guards below never come back as history — they
+    // were teaching the model that "listo ✅" with nothing behind it is normal.
+    if (msg.tool_calls?.length) saveMessage(msg);
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
       const text = msg.content?.trim() || t("agentDone");
@@ -236,6 +274,7 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
         issues = validatedIssues;
         if (issues.length && revisions < MAX_PLAN_REVISIONS) {
           console.warn(`[agent] plan revision ${revisions + 1}: ${issues.length} issue(s)`);
+          escalate(`plan revision (${issues.length} issue(s))`);
           revisions++;
           ctx.staged = [];
           messages.push({
@@ -255,6 +294,7 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
       // confirmation is exactly the "it acts and then asks" complaint.
       if (!claimFixed && staged.length > 0 && !ctx.executed?.length && CLAIMS_DONE.test(text)) {
         claimFixed = true;
+        escalate("claimed a staged plan was already done");
         // Only the wording is being fixed: the plan below must not grow.
         ctx.planFrozen = true;
         console.warn(`[agent] claims a staged plan is done: "${text.slice(0, 80)}"`);
@@ -268,10 +308,31 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
         continue;
       }
 
+      // Talks about a card, a button or a pending confirmation while the turn
+      // staged nothing: the user is being sent to tap something that will never
+      // arrive. One chance to either propose the change for real or drop the
+      // claim. This is the failure the whole "I can't create anything" report
+      // was made of.
+      if (!cardFixed && staged.length === 0 && CLAIMS_CARD.test(text)) {
+        cardFixed = true;
+        escalate("announced a card with nothing staged");
+        console.warn(`[agent] announces a card with nothing staged: "${text.slice(0, 80)}"`);
+        messages.push({
+          role: "system",
+          content:
+            "ALTO: en este turno no anotaste ningún cambio de calendario, así que NO va a salir ninguna tarjeta ni ningún botón " +
+            "y el usuario se queda esperando algo que nunca llega. Si el cambio hay que hacerlo, llamá AHORA a las herramientas " +
+            "(create_event / update_event / delete_event, o propose_batch si son varios). Si no correspondía ninguna acción, " +
+            "respondé de nuevo SIN mencionar tarjetas, botones ni confirmaciones pendientes.",
+        });
+        continue;
+      }
+
       // Safety net: if it claims it did something without having run any mutating
       // tool, demand that it actually does it (only once).
       if (!corrected && ctx.mutated!.length === 0 && CLAIMS_ACTION.test(text)) {
         corrected = true;
+        escalate("claimed an action without calling any tool");
         console.warn(`[agent] reply with no real action, demanding a correction: "${text.slice(0, 80)}"`);
         messages.push({
           role: "system",
@@ -287,6 +348,7 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
       // it actually do it instead of ending the turn on a promise.
       if (!nudgedToWork && ctx.mutated!.length === 0 && !ctx.readDays?.size && PROMISES_ACTION.test(text)) {
         nudgedToWork = true;
+        escalate("promised work without doing it");
         console.warn(`[agent] promise without action, pushing it to work: "${text.slice(0, 80)}"`);
         messages.push({
           role: "system",
@@ -300,11 +362,20 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
 
       const pending: PendingRequest[] = [];
       if (staged.length) pending.push(createPendingCard(staged, issues));
+      // Last resort, after the nudge above already had its chance: it still
+      // points at a card that is not going out. Say so instead of leaving the
+      // user waiting for buttons.
+      const finalText =
+        !pending.length && !ctx.executed?.length && CLAIMS_CARD.test(text)
+          ? `${text}\n\n${t("noCardPending")}`
+          : text;
+      saveMessage({ role: "assistant", content: finalText });
       console.log(
         `[agent] turn finished: ${modelCalls} model call(s), ${ctx.mutated!.length} tool mutation(s), ` +
-          `${staged.length} staged action(s), ${revisions} revision(s)`,
+          `${staged.length} staged action(s), ${revisions} revision(s)` +
+          (escalatedTo ? `, escalated to ${escalatedTo}` : ""),
       );
-      return { text, pending };
+      return { text: finalText, pending };
     }
 
     for (const call of msg.tool_calls) {

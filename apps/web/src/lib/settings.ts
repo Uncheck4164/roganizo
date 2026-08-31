@@ -16,6 +16,8 @@ export interface SettingsFieldMeta {
   hint?: string;
   /** Values that can only come from the environment are rendered read-only. */
   envOnly?: boolean;
+  /** Optional keys have a usable default; only these count as still missing. */
+  required?: boolean;
 }
 
 export interface SettingsPayload {
@@ -151,8 +153,21 @@ export const SETTINGS_FIELDS: SettingsFieldDef[] = [
   { key: "CALLMEBOT_USER", group: "telegram", placeholder: "@usuario" },
   { key: "OPENROUTER_API_KEY", group: "model" },
   { key: "OPENROUTER_MODEL", group: "model" },
+  { key: "OPENROUTER_MODEL_STRONG", group: "model", placeholder: "anthropic/claude-sonnet-5" },
+  {
+    key: "OPENROUTER_QUALITY_FLOOR",
+    group: "model",
+    kind: "select",
+    options: ["any", "6bit", "8bit", "16bit"],
+  },
+  { key: "OPENROUTER_MAX_PRICE", group: "model", placeholder: "0.2,0.6" },
   { key: "OPENROUTER_PROVIDER_ORDER", group: "model", placeholder: "deepinfra,baidu" },
-  { key: "OPENROUTER_SORT", group: "model", kind: "select", options: ["price", "throughput", "latency"] },
+  {
+    key: "OPENROUTER_SORT",
+    group: "model",
+    kind: "select",
+    options: ["auto", "price", "throughput", "latency"],
+  },
   { key: "GOOGLE_CLIENT_ID", group: "google" },
   { key: "GOOGLE_CLIENT_SECRET", group: "google" },
   { key: "PUBLIC_URL", group: "server", placeholder: "https://roganizo.example.com" },

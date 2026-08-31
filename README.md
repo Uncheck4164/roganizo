@@ -179,8 +179,11 @@ can only be set as an environment variable.
 | `TELEGRAM_BOT_TOKEN` | Token from @BotFather |
 | `TELEGRAM_ALLOWED_USER_ID` | Your numeric user ID — the bot ignores everyone else |
 | `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` | LLM (default `deepseek/deepseek-v4-flash-0731`) |
-| `OPENROUTER_PROVIDER_ORDER` | Preferred providers, in order; accepts a quantization variant (default `deepinfra/fp4,baidu`) |
-| `OPENROUTER_SORT` | Fallback criterion: `price` (default), `throughput` or `latency` |
+| `OPENROUTER_MODEL_STRONG` | Better model the agent escalates to when the cheap one gets a turn wrong (empty = never) |
+| `OPENROUTER_QUALITY_FLOOR` | Lowest endpoint quantization: `any`, `6bit`, `8bit` (default), `16bit` |
+| `OPENROUTER_MAX_PRICE` | Price ceiling for the everyday model, `prompt,completion` in USD per million tokens; it does not apply to the backup model (empty = none) |
+| `OPENROUTER_PROVIDER_ORDER` | Preferred providers, in order; accepts a quantization variant (empty = OpenRouter chooses) |
+| `OPENROUTER_SORT` | `auto` (default, OpenRouter balances price and availability), `price`, `throughput` or `latency` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth credentials |
 | `PUBLIC_URL` | Public URL (OAuth callback + links sent by the bot) |
 | `PORT` | HTTP port (default 8080) |
@@ -222,6 +225,27 @@ says what is broken, and calendar writes that go through the same validation as 
 confirmation card — with warnings refusing the plan unless they are explicitly acknowledged.
 Setup and tool reference: **[docs/mcp.md](docs/mcp.md)**.
 
+## Quality and price
+
+The bot lives on multi-step tool calling, which is exactly what the cheapest endpoints are
+worst at. Rather than choose once between "cheap" and "good", it keeps a floor and escalates
+only when it has to:
+
+- **Routing floor.** `OPENROUTER_QUALITY_FLOOR` (default `8bit`) keeps 4-bit endpoints out —
+  they are the cheapest and the least reliable with tools. `OPENROUTER_MAX_PRICE` is the
+  ceiling on the other side — it applies to the everyday model only, since a cap tight enough
+  to be useful there would leave the backup model with no endpoint at all. If the two together leave no endpoint at all, the request is
+  retried once without them and the log says so: no answer at all is worse than a cheap one.
+- **Balanced routing by default.** `OPENROUTER_SORT=auto` leaves the choice to OpenRouter's own
+  balance (skip providers with recent outages, then weight by inverse square of price). Pinning
+  `price` switches that off and always takes the cheapest endpoint, however badly it is behaving.
+- **Escalation on failure.** With `OPENROUTER_MODEL_STRONG` set, a turn that trips one of the
+  safety nets — claiming something was done, announcing a card it never staged, promising work
+  it did not do, or producing a plan the real calendar rejected — finishes on the stronger
+  model. Turns that go fine never pay for it.
+
+`/diag` reports the routing in force and tests both models.
+
 ## How calendar changes are confirmed
 
 Nothing reaches Google Calendar without you tapping a button:
@@ -229,9 +253,13 @@ Nothing reaches Google Calendar without you tapping a button:
 - Every create, move and delete the assistant decides on is **staged**, not executed. At the
   end of the turn you get **one card** listing the changes numbered and grouped by day, with
   Confirm / Cancel.
-- Before staging anything, the assistant is *forced* to read the affected days
-  (`get_events` / `find_free_slots`) in that same turn — and event ids must come from that
-  read, so stale ids can no longer produce a wall of "Not Found".
+- You answer the card with its buttons **or by typing `Confirm` / `Cancel`**, so a card that
+  never rendered no longer leaves the request stuck. A turn that stages nothing is stopped from
+  talking about a card that is not coming.
+- The affected days are always read in that same turn before anything is staged: if the
+  assistant forgets, the tool reads the day itself and hands it back, so nothing is planned
+  blind. Event ids for moves and deletes must still come from that read, so stale ids can no
+  longer produce a wall of "Not Found".
 - The plan is then validated against the real calendar: missing events, times that end before
   they start, actions repeated inside the plan, exact duplicates and overlaps are shown on the
   card. Errors block confirmation; warnings are just flagged. When something is wrong, the

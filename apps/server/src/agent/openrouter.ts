@@ -52,6 +52,11 @@ export class OpenRouterError extends Error {
     super(message);
     this.name = "OpenRouterError";
   }
+
+  /** The routing filters left OpenRouter with no endpoint to send this to. */
+  get noEndpoints(): boolean {
+    return this.status === 404 || /no (?:allowed )?(?:endpoints?|providers?)/i.test(this.message);
+  }
 }
 
 interface ApiError {
@@ -139,15 +144,54 @@ function normalizeToolCalls(raw: unknown): ToolCall[] | undefined {
   return calls.length ? calls : undefined;
 }
 
-function providerBlock() {
+/**
+ * Endpoints allowed at each quality floor. 4-bit quantizations are the cheapest
+ * and by far the worst at multi-step tool calling, which is the only thing this
+ * bot does — keeping them out is the whole point of the floor. "unknown" stays
+ * allowed at every level: plenty of solid providers simply do not report a
+ * quantization, and excluding them would leave good models with no endpoint.
+ */
+const QUANTIZATION_FLOORS: Record<string, string[]> = {
+  any: [],
+  "6bit": ["fp6", "fp8", "mxfp8", "int8", "fp16", "bf16", "fp32", "unknown"],
+  "8bit": ["fp8", "mxfp8", "int8", "fp16", "bf16", "fp32", "unknown"],
+  "16bit": ["fp16", "bf16", "fp32", "unknown"],
+};
+
+/** "1,3" → at most 1 USD per million prompt tokens and 3 per million output. */
+function priceCeiling(): { prompt: number; completion: number } | undefined {
+  if (!config.OPENROUTER_MAX_PRICE) return undefined;
+  const [prompt, completion] = config.OPENROUTER_MAX_PRICE.split(",").map(Number);
+  if (!Number.isFinite(prompt!) || !Number.isFinite(completion!)) return undefined;
+  return { prompt: prompt!, completion: completion! };
+}
+
+/**
+ * Routing preferences. `relaxed` drops the quality floor and the price ceiling:
+ * that is the second chance taken when the filters leave OpenRouter with nothing
+ * to route to, because a bot that answers nothing is worse than a cheap answer.
+ */
+function providerBlock(relaxed: boolean, model: string) {
   const order = config.OPENROUTER_PROVIDER_ORDER
     ? config.OPENROUTER_PROVIDER_ORDER.split(",")
         .map((s) => s.trim())
         .filter(Boolean)
     : [];
+  const quantizations = relaxed ? [] : QUANTIZATION_FLOORS[config.OPENROUTER_QUALITY_FLOOR] ?? [];
+  // The ceiling guards the everyday model against an expensive provider serving
+  // it. It deliberately does not apply to the reinforcement model: that one is
+  // only reached after a turn already failed, and costing more is its job — a
+  // ceiling tight enough to be useful here would leave it with no endpoint.
+  const ceiling = relaxed || model !== config.OPENROUTER_MODEL ? undefined : priceCeiling();
   return {
     ...(order.length ? { order } : {}),
-    sort: config.OPENROUTER_SORT,
+    // No `sort` is not "no preference": it is OpenRouter's own balance — skip
+    // providers with recent outages, then pick among the stable ones weighted by
+    // inverse square of price. Pinning sort:"price" switches that balance off
+    // and always takes the cheapest endpoint, however badly it is behaving.
+    ...(config.OPENROUTER_SORT === "auto" ? {} : { sort: config.OPENROUTER_SORT }),
+    ...(quantizations.length ? { quantizations } : {}),
+    ...(ceiling ? { max_price: ceiling } : {}),
     allow_fallbacks: true,
     // Without this, a fallback provider that does not implement tool calling can
     // be picked: it answers prose and the bot silently stops doing anything.
@@ -155,7 +199,30 @@ function providerBlock() {
   };
 }
 
-async function singleCall(messages: ChatMessage[], tools: unknown): Promise<ModelReply> {
+/** True when a relaxed retry would actually send something different. */
+function hasRoutingFilters(model: string): boolean {
+  return (
+    (QUANTIZATION_FLOORS[config.OPENROUTER_QUALITY_FLOOR]?.length ?? 0) > 0 ||
+    (model === config.OPENROUTER_MODEL && priceCeiling() !== undefined)
+  );
+}
+
+/** One line describing where a request would be routed, for /diag. */
+export function routingSummary(): string {
+  const floor =
+    config.OPENROUTER_QUALITY_FLOOR === "any" ? "quant=any" : `quant>=${config.OPENROUTER_QUALITY_FLOOR}`;
+  const ceiling = config.OPENROUTER_MAX_PRICE
+    ? `max_price=${config.OPENROUTER_MAX_PRICE} $/M (base)`
+    : "max_price=off";
+  return `sort=${config.OPENROUTER_SORT} · ${floor} · ${ceiling} · providers=${config.OPENROUTER_PROVIDER_ORDER || "auto"}`;
+}
+
+async function singleCall(
+  messages: ChatMessage[],
+  tools: unknown,
+  model: string,
+  relaxed: boolean,
+): Promise<ModelReply> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -171,13 +238,13 @@ async function singleCall(messages: ChatMessage[], tools: unknown): Promise<Mode
         "X-Title": "Roganizo",
       },
       body: JSON.stringify({
-        model: config.OPENROUTER_MODEL,
+        model,
         messages,
         tools,
         tool_choice: "auto",
         temperature: 0.2, // scheduling is not a creative task
         max_tokens: MAX_TOKENS,
-        provider: providerBlock(),
+        provider: providerBlock(relaxed, model),
         usage: { include: true },
       }),
     });
@@ -258,16 +325,44 @@ async function singleCall(messages: ChatMessage[], tools: unknown): Promise<Mode
   };
 }
 
-/** One model turn, retried on transient failures. */
-export async function callModel(messages: ChatMessage[], tools: unknown): Promise<ModelReply> {
+/**
+ * One model turn. `model` defaults to the cheap one; the agent passes the
+ * reinforcement model once a turn has shown the cheap one cannot handle it.
+ */
+export async function callModel(
+  messages: ChatMessage[],
+  tools: unknown,
+  model: string = config.OPENROUTER_MODEL,
+): Promise<ModelReply> {
+  try {
+    return await withRetries(messages, tools, model, false);
+  } catch (err) {
+    // The quality floor (or the price ceiling) matched no endpoint at all.
+    // Answering from a cheaper one beats not answering, but the log has to say
+    // it, because it means the floor and the model do not fit each other.
+    if (err instanceof OpenRouterError && err.noEndpoints && hasRoutingFilters(model)) {
+      console.warn(`[llm] no endpoint matches the routing floor (${err.message}); retrying without it`);
+      return withRetries(messages, tools, model, true);
+    }
+    throw err;
+  }
+}
+
+/** Transient failures only: the caller decides about the routing ones. */
+async function withRetries(
+  messages: ChatMessage[],
+  tools: unknown,
+  model: string,
+  relaxed: boolean,
+): Promise<ModelReply> {
   let last: OpenRouterError | undefined;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       const started = Date.now();
-      const reply = await singleCall(messages, tools);
+      const reply = await singleCall(messages, tools, model, relaxed);
       const { usage } = reply;
       console.log(
-        `[llm] ${config.OPENROUTER_MODEL} via ${reply.provider ?? "?"} in ${Date.now() - started}ms` +
+        `[llm] ${model} via ${reply.provider ?? "?"} in ${Date.now() - started}ms` +
           (usage ? ` — ${usage.prompt}+${usage.completion} tok` : "") +
           (usage?.cost !== undefined ? ` — $${usage.cost.toFixed(6)}` : "") +
           ` — finish=${reply.finishReason ?? "?"}`,
@@ -296,13 +391,13 @@ export interface DiagnosticsResult {
 }
 
 /** Minimal round trip used by /diag: proves key, model and routing all work. */
-export async function checkModel(): Promise<DiagnosticsResult> {
+export async function checkModel(model: string = config.OPENROUTER_MODEL): Promise<DiagnosticsResult> {
   const started = Date.now();
   try {
-    const reply = await singleCall([{ role: "user", content: "ping" }], undefined);
+    const reply = await singleCall([{ role: "user", content: "ping" }], undefined, model, false);
     return {
       ok: true,
-      model: config.OPENROUTER_MODEL,
+      model,
       provider: reply.provider,
       latencyMs: Date.now() - started,
       cost: reply.usage?.cost,
@@ -310,7 +405,7 @@ export async function checkModel(): Promise<DiagnosticsResult> {
   } catch (err) {
     return {
       ok: false,
-      model: config.OPENROUTER_MODEL,
+      model,
       latencyMs: Date.now() - started,
       error: err instanceof OpenRouterError ? err.userHint : (err as Error).message,
     };

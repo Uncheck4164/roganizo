@@ -32,6 +32,12 @@ const es = {
   agentTooManySteps:
     "Me quedé sin pasos para completar eso (demasiadas operaciones seguidas). Prueba dividir el pedido.",
   pendingGone: "Esta acción ya no está pendiente.",
+  nothingPending:
+    "No tengo ninguna propuesta pendiente ahora mismo. Dime qué necesitas y te la preparo 👍",
+  cardNotShown:
+    "No pude mostrarte la tarjeta de confirmación, así que cancelé la propuesta para no dejarla a medias. Pídemelo otra vez, por favor 🙏",
+  noCardPending:
+    "⚠️ Aviso automático: en este turno no quedó ninguna propuesta pendiente, así que no hay tarjeta ni botón que confirmar. Si querías que lo agendara, pídemelo de nuevo.",
   batchConflict: "⚠️ {label}: no se creó, hay conflicto de horario.",
 
   // Confirmation card
@@ -87,6 +93,10 @@ const es = {
   diagOk: "✅ OpenRouter responde\nModelo: {model}\nProveedor: {provider}\nLatencia: {latency} ms{cost}",
   diagCost: "\nCosto de la prueba: ${cost}",
   diagFail: "❌ OpenRouter falló\nModelo: {model}\n{error}",
+  diagRouting: "Ruteo: {routing}",
+  diagStrongOff: "Refuerzo: sin configurar (todo lo resuelve el modelo base)",
+  diagStrongOk: "Refuerzo: {model} ✅ ({latency} ms) — solo entra cuando el base falla",
+  diagStrongFail: "Refuerzo: {model} ❌ {error}",
 
   reminder: "🔔 Recordatorio: {message}",
   reminderUrgentAttempt:
@@ -135,6 +145,11 @@ const en: Record<MessageKey, string> = {
   agentTooManySteps:
     "I ran out of steps to finish that (too many operations in a row). Try splitting the request.",
   pendingGone: "This action is no longer pending.",
+  nothingPending: "Nothing is waiting for confirmation right now. Tell me what you need and I'll set it up 👍",
+  cardNotShown:
+    "I couldn't show you the confirmation card, so I cancelled the proposal rather than leave it half done. Please ask me again 🙏",
+  noCardPending:
+    "⚠️ Automatic notice: nothing was left pending this turn, so there is no card and no button to confirm. If you wanted it scheduled, ask me again.",
   batchConflict: "⚠️ {label}: not created, there's a scheduling conflict.",
 
   planHeader: "📋 Here's what I'm about to do ({count}). Nothing has changed yet.",
@@ -185,6 +200,10 @@ const en: Record<MessageKey, string> = {
   diagOk: "✅ OpenRouter is responding\nModel: {model}\nProvider: {provider}\nLatency: {latency} ms{cost}",
   diagCost: "\nCost of this test: ${cost}",
   diagFail: "❌ OpenRouter failed\nModel: {model}\n{error}",
+  diagRouting: "Routing: {routing}",
+  diagStrongOff: "Backup model: not configured (the base model handles everything)",
+  diagStrongOk: "Backup model: {model} ✅ ({latency} ms) — it only steps in when the base one fails",
+  diagStrongFail: "Backup model: {model} ❌ {error}",
 
   reminder: "🔔 Reminder: {message}",
   reminderUrgentAttempt:
