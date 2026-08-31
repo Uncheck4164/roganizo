@@ -12,11 +12,26 @@ export const settingsSchema = z.object({
   TELEGRAM_ALLOWED_USER_ID: z.coerce.number().int(),
   OPENROUTER_API_KEY: z.string().min(10),
   OPENROUTER_MODEL: z.string().default("deepseek/deepseek-v4-flash-0731"),
+  // Stronger model the agent switches to mid-turn when the cheap one visibly
+  // fails (a guard trips, the plan needs a revision). Empty = never escalate.
+  OPENROUTER_MODEL_STRONG: z.string().default(""),
+  // Lowest endpoint quantization allowed. 4-bit endpoints are the cheapest and
+  // the worst at multi-step tool calling, which is what this bot lives on.
+  OPENROUTER_QUALITY_FLOOR: z.enum(["any", "6bit", "8bit", "16bit"]).default("8bit"),
+  // Price ceiling for the everyday model as "prompt,completion" in USD per
+  // million tokens (e.g. "0.2,0.6"). It does not apply to the reinforcement
+  // model, which is only reached once a turn has already failed. Empty = none.
+  OPENROUTER_MAX_PRICE: z
+    .string()
+    .regex(/^\d+(\.\d+)?,\d+(\.\d+)?$/, 'Use "prompt,completion" in USD per million tokens')
+    .or(z.literal(""))
+    .default(""),
   // OpenRouter provider slugs in order of preference (a quantization variant is
   // allowed, e.g. "deepinfra/fp4"). Empty = let OpenRouter choose.
-  OPENROUTER_PROVIDER_ORDER: z.string().default("deepinfra/fp4,baidu"),
-  // "price" = always the cheapest available option when falling back.
-  OPENROUTER_SORT: z.enum(["price", "throughput", "latency"]).default("price"),
+  OPENROUTER_PROVIDER_ORDER: z.string().default(""),
+  // "auto" = OpenRouter's own balance (cheapest provider that is actually up).
+  // Any other value pins one attribute and switches load balancing off.
+  OPENROUTER_SORT: z.enum(["auto", "price", "throughput", "latency"]).default("auto"),
   GOOGLE_CLIENT_ID: z.string().min(5),
   GOOGLE_CLIENT_SECRET: z.string().min(5),
   PUBLIC_URL: z.string().url().default("http://localhost:8080"),
@@ -53,8 +68,22 @@ export const looseSettingsSchema = z.object({
     .string()
     .default("deepseek/deepseek-v4-flash-0731")
     .catch("deepseek/deepseek-v4-flash-0731"),
-  OPENROUTER_PROVIDER_ORDER: z.string().default("deepinfra/fp4,baidu").catch("deepinfra/fp4,baidu"),
-  OPENROUTER_SORT: z.enum(["price", "throughput", "latency"]).default("price").catch("price"),
+  OPENROUTER_MODEL_STRONG: z.string().default("").catch(""),
+  OPENROUTER_QUALITY_FLOOR: z
+    .enum(["any", "6bit", "8bit", "16bit"])
+    .default("8bit")
+    .catch("8bit"),
+  OPENROUTER_MAX_PRICE: z
+    .string()
+    .regex(/^\d+(\.\d+)?,\d+(\.\d+)?$/)
+    .or(z.literal(""))
+    .default("")
+    .catch(""),
+  OPENROUTER_PROVIDER_ORDER: z.string().default("").catch(""),
+  OPENROUTER_SORT: z
+    .enum(["auto", "price", "throughput", "latency"])
+    .default("auto")
+    .catch("auto"),
   GOOGLE_CLIENT_ID: z.string().default("").catch(""),
   GOOGLE_CLIENT_SECRET: z.string().default("").catch(""),
   PUBLIC_URL: z
@@ -123,7 +152,15 @@ export function isRequiredKey(key: string): boolean {
  * Keys where an empty string is a meaningful value ("disabled") rather than
  * "not set"; every other empty value falls through to the next layer.
  */
-export const EMPTY_ALLOWED_KEYS = ["CALLMEBOT_USER", "BRIEFING_TIME"] as const;
+export const EMPTY_ALLOWED_KEYS = [
+  "CALLMEBOT_USER",
+  "BRIEFING_TIME",
+  // Empty is a real choice here: no reinforcement model, no price ceiling, and
+  // "let OpenRouter pick the provider" respectively.
+  "OPENROUTER_MODEL_STRONG",
+  "OPENROUTER_MAX_PRICE",
+  "OPENROUTER_PROVIDER_ORDER",
+] as const;
 
 export type SettingGroup = "telegram" | "model" | "google" | "server" | "web" | "preferences";
 
@@ -140,6 +177,9 @@ export const SETTINGS_META: Record<Exclude<SettingKey, "WEB_SESSION_SECRET">, Se
   CALLMEBOT_USER: { group: "telegram", secret: false, envOnly: false },
   OPENROUTER_API_KEY: { group: "model", secret: true, envOnly: false },
   OPENROUTER_MODEL: { group: "model", secret: false, envOnly: false },
+  OPENROUTER_MODEL_STRONG: { group: "model", secret: false, envOnly: false },
+  OPENROUTER_QUALITY_FLOOR: { group: "model", secret: false, envOnly: false },
+  OPENROUTER_MAX_PRICE: { group: "model", secret: false, envOnly: false },
   OPENROUTER_PROVIDER_ORDER: { group: "model", secret: false, envOnly: false },
   OPENROUTER_SORT: { group: "model", secret: false, envOnly: false },
   GOOGLE_CLIENT_ID: { group: "google", secret: false, envOnly: false },

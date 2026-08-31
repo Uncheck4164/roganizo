@@ -260,7 +260,9 @@ export default function SettingsView({
 
       {groups.map(({ group, rows }) => {
         const help = helpFor(group, lang);
-        const notConfigured = rows.filter((r) => !r.meta.configured && !r.meta.envOnly).length;
+        const notConfigured = rows.filter(
+          (r) => r.meta.required && !r.meta.configured && !r.meta.envOnly,
+        ).length;
         const helpOpen = openHelp === group;
         return (
           <section key={group} className="rg-panel" style={{ ...panelStyle, padding: "26px 30px 8px" }}>

@@ -146,10 +146,20 @@ const es = {
   "field.OPENROUTER_API_KEY.hint": "Clave de tu cuenta de OpenRouter.",
   "field.OPENROUTER_MODEL.label": "Modelo",
   "field.OPENROUTER_MODEL.hint": "Identificador del modelo que interpreta tus mensajes.",
+  "field.OPENROUTER_MODEL_STRONG.label": "Modelo de refuerzo",
+  "field.OPENROUTER_MODEL_STRONG.hint":
+    "Opcional. Modelo mejor al que se cambia solo cuando el base se equivoca en un turno. Vacío = nunca.",
+  "field.OPENROUTER_QUALITY_FLOOR.label": "Piso de calidad",
+  "field.OPENROUTER_QUALITY_FLOOR.hint":
+    "Cuantización mínima del proveedor. 8bit descarta los endpoints de 4 bits, que son los más baratos y los peores usando herramientas.",
+  "field.OPENROUTER_MAX_PRICE.label": "Precio máximo",
+  "field.OPENROUTER_MAX_PRICE.hint":
+    'Techo del modelo base, en USD por millón de tokens, como "entrada,salida" (ej: 0.2,0.6). No se aplica al de refuerzo. Vacío = sin techo.',
   "field.OPENROUTER_PROVIDER_ORDER.label": "Orden de providers",
   "field.OPENROUTER_PROVIDER_ORDER.hint": "Proveedores preferidos, en orden y separados por coma.",
   "field.OPENROUTER_SORT.label": "Criterio de fallback",
-  "field.OPENROUTER_SORT.hint": "Cómo elegir cuando el provider preferido no responde.",
+  "field.OPENROUTER_SORT.hint":
+    "auto = OpenRouter equilibra precio y disponibilidad. Fijar uno apaga ese equilibrio.",
   "field.GOOGLE_CLIENT_ID.label": "Client ID",
   "field.GOOGLE_CLIENT_ID.hint": "Credencial OAuth del proyecto en Google Cloud.",
   "field.GOOGLE_CLIENT_SECRET.label": "Client secret",
@@ -295,10 +305,20 @@ const en: Record<TKey, string> = {
   "field.OPENROUTER_API_KEY.hint": "Key from your OpenRouter account.",
   "field.OPENROUTER_MODEL.label": "Model",
   "field.OPENROUTER_MODEL.hint": "Identifier of the model that reads your messages.",
+  "field.OPENROUTER_MODEL_STRONG.label": "Backup model",
+  "field.OPENROUTER_MODEL_STRONG.hint":
+    "Optional. Better model the agent switches to on its own when the base one gets a turn wrong. Empty = never.",
+  "field.OPENROUTER_QUALITY_FLOOR.label": "Quality floor",
+  "field.OPENROUTER_QUALITY_FLOOR.hint":
+    "Minimum provider quantization. 8bit rules out 4-bit endpoints, the cheapest ones and the worst at tool calling.",
+  "field.OPENROUTER_MAX_PRICE.label": "Price cap",
+  "field.OPENROUTER_MAX_PRICE.hint":
+    'Ceiling for the base model, in USD per million tokens, as "input,output" (e.g. 0.2,0.6). It does not apply to the backup model. Empty = no cap.',
   "field.OPENROUTER_PROVIDER_ORDER.label": "Provider order",
   "field.OPENROUTER_PROVIDER_ORDER.hint": "Preferred providers, in order, separated by commas.",
   "field.OPENROUTER_SORT.label": "Fallback criterion",
-  "field.OPENROUTER_SORT.hint": "How to choose when the preferred provider does not answer.",
+  "field.OPENROUTER_SORT.hint":
+    "auto = OpenRouter balances price against availability. Pinning one switches that balance off.",
   "field.GOOGLE_CLIENT_ID.label": "Client ID",
   "field.GOOGLE_CLIENT_ID.hint": "OAuth credential of the project in Google Cloud.",
   "field.GOOGLE_CLIENT_SECRET.label": "Client secret",

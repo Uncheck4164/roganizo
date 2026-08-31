@@ -81,6 +81,9 @@ settingsRoutes.get("/api/settings", (c) => {
     meta[key] = {
       secret,
       configured,
+      // Optional keys have a working default: only a required one without a
+      // value is something the user still has to do.
+      required: isRequiredKey(key),
       source: sourceOf(key),
       group: info.group,
       envOnly: info.envOnly,

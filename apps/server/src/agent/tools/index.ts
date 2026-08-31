@@ -29,7 +29,7 @@ export const toolDefinitions = [
     function: {
       name: "create_event",
       description:
-        "PROPONE crear un evento en Google Calendar: NO lo crea, lo deja en una tarjeta que el usuario confirma con un botón. Antes de llamarla tenés que haber leído ese día con get_events o find_free_slots EN ESTE MISMO TURNO (si no, la tool falla). Para horarios semanales usá rrule (ej: 'RRULE:FREQ=WEEKLY;BYDAY=MO').",
+        "PROPONE crear un evento en Google Calendar: NO lo crea, lo deja en una tarjeta que el usuario confirma con un botón. Lo mejor es leer ese día con get_events antes; si no lo hiciste, la tool lo lee por vos y te devuelve en events_that_day lo que ya había ese día (revisalo y avisá si hay choque). Para horarios semanales usá rrule (ej: 'RRULE:FREQ=WEEKLY;BYDAY=MO').",
       parameters: {
         type: "object",
         properties: {
@@ -412,17 +412,46 @@ function stage(ctx: ToolContext, action: PlanAction) {
   };
 }
 
-/** Read-before-write: refuses to plan a change on a day the model has not read. */
-function requireRead(ctx: ToolContext, isoDates: unknown[]): { error: string } | null {
-  const missing = isoDates
-    .map(dayOf)
-    .filter((d) => d && !(ctx.readDays?.has(d) ?? false));
+const hhmm = (iso: string) => DateTime.fromISO(iso, { zone: config.TIMEZONE }).toFormat("HH:mm");
+
+/**
+ * Read-before-write, self-healing.
+ *
+ * The rule stands — nothing is planned on a day nobody looked at — but the day
+ * is read HERE instead of bouncing the call back with an error. Sending the
+ * model away to call get_events and come back is where the flow died: it often
+ * just apologised instead, so nothing got staged, no card was sent, and the
+ * reply still told the user to tap a button that never existed.
+ *
+ * Returns the events of the days it had to read (they travel back in the same
+ * tool result), null when everything was already read, or a refusal when Google
+ * itself is unreachable — a blind write is still refused.
+ */
+async function ensureRead(
+  ctx: ToolContext,
+  isoDates: unknown[],
+): Promise<{ days: Record<string, string[]> } | { error: string } | null> {
+  const missing = [...new Set(isoDates.map(dayOf).filter((d) => d && !(ctx.readDays?.has(d) ?? false)))];
   if (missing.length === 0) return null;
-  return {
-    error:
-      `Todavía no leíste el calendario de ${[...new Set(missing)].join(", ")} en este turno. ` +
-      "Llamá primero a get_events (o find_free_slots) de esos días y después volvé a proponer el cambio.",
-  };
+
+  const days: Record<string, string[]> = {};
+  for (const day of missing) {
+    const start = DateTime.fromISO(day, { zone: config.TIMEZONE }).startOf("day");
+    const fromISO = start.toISO()!;
+    const toISO = start.endOf("day").toISO()!;
+    try {
+      const events = await calendar.listEvents(fromISO, toISO);
+      rememberRead(ctx, events, fromISO, toISO);
+      days[day] = events.map((e) => `${hhmm(e.start)}-${hhmm(e.end)} ${e.title}`);
+    } catch (err) {
+      return {
+        error:
+          `No pude leer el calendario de ${day} (${(err as Error).message}), así que no anoto nada a ciegas. ` +
+          "Probá de nuevo con get_events de ese día.",
+      };
+    }
+  }
+  return { days };
 }
 
 /** Refuses ids the model did not obtain from a read in this same turn. */
@@ -435,16 +464,33 @@ function requireKnownId(ctx: ToolContext, id: string): { error: string } | null 
   };
 }
 
+/** A result that is really a refusal: the tool ran nothing and staged nothing. */
+function refused(result: unknown): boolean {
+  return typeof result === "object" && result !== null && Boolean((result as { error?: unknown }).error);
+}
+
 /** Runs a tool. Calendar writes are staged for confirmation unless ctx.confirmed. */
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<unknown> {
-  if (MUTATING_TOOLS.has(name)) {
+  const result = await runTool(name, args, ctx);
+  // A refused write is NOT a mutation. Counting it as one disarmed the safety
+  // net in agent.ts that catches "I created it" replies with nothing behind
+  // them — exactly in the case where the model most needed catching.
+  if (MUTATING_TOOLS.has(name) && !refused(result)) {
     (ctx.mutated ??= []).push(name);
     if (ctx.confirmed || IMMEDIATE_TOOLS.has(name)) (ctx.executed ??= []).push(name);
   }
+  return result;
+}
+
+async function runTool(
+  name: string,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<unknown> {
   switch (name) {
     case "get_events": {
       const events = await calendar.listEvents(String(args.from), String(args.to));
@@ -454,9 +500,13 @@ export async function executeTool(
 
     case "create_event": {
       if (!ctx.confirmed) {
-        const blocked = requireRead(ctx, [args.start]);
-        if (blocked) return blocked;
-        return stage(ctx, { tool: "create_event", args });
+        const read = await ensureRead(ctx, [args.start]);
+        if (read && "error" in read) return read;
+        const result = stage(ctx, { tool: "create_event", args });
+        // The day the model had not looked at comes back with the result, so it
+        // can warn about an overlap in this same turn (validatePlan marks it on
+        // the card either way).
+        return read && !("error" in result) ? { ...result, events_that_day: read.days } : result;
       }
       // Confirmed run: never produce a byte-identical twin, even if the user
       // confirmed the same plan twice.
@@ -481,8 +531,8 @@ export async function executeTool(
         const unknown = requireKnownId(ctx, eventId);
         if (unknown) return unknown;
         if (args.start) {
-          const blocked = requireRead(ctx, [args.start]);
-          if (blocked) return blocked;
+          const read = await ensureRead(ctx, [args.start]);
+          if (read && "error" in read) return read;
         }
         return stage(ctx, { tool: "update_event", args });
       }
@@ -548,8 +598,8 @@ export async function executeTool(
           return { error: `propose_batch solo acepta create_event, update_event y delete_event (vino "${action.tool}").` };
         }
         if (action.tool === "create_event") {
-          const blocked = requireRead(ctx, [action.args?.start]);
-          if (blocked) return blocked;
+          const read = await ensureRead(ctx, [action.args?.start]);
+          if (read && "error" in read) return read;
         } else {
           const unknown = requireKnownId(ctx, String(action.args?.event_id ?? ""));
           if (unknown) return unknown;

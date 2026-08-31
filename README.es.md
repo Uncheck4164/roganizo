@@ -183,8 +183,11 @@ puede setear como variable de entorno.
 | `TELEGRAM_BOT_TOKEN` | Token de @BotFather |
 | `TELEGRAM_ALLOWED_USER_ID` | Tu user ID numérico — el bot ignora al resto |
 | `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` | LLM (default `deepseek/deepseek-v4-flash-0731`) |
-| `OPENROUTER_PROVIDER_ORDER` | Providers preferidos en orden, admite variante de cuantización (default `deepinfra/fp4,baidu`) |
-| `OPENROUTER_SORT` | Criterio de fallback: `price` (default), `throughput` o `latency` |
+| `OPENROUTER_MODEL_STRONG` | Modelo mejor al que escala el agente cuando el barato se equivoca en un turno (vacío = nunca) |
+| `OPENROUTER_QUALITY_FLOOR` | Cuantización mínima del endpoint: `any`, `6bit`, `8bit` (default), `16bit` |
+| `OPENROUTER_MAX_PRICE` | Techo del modelo de todos los días, `entrada,salida` en USD por millón de tokens; no se aplica al de refuerzo (vacío = sin techo) |
+| `OPENROUTER_PROVIDER_ORDER` | Providers preferidos en orden, admite variante de cuantización (vacío = elige OpenRouter) |
+| `OPENROUTER_SORT` | `auto` (default, OpenRouter equilibra precio y disponibilidad), `price`, `throughput` o `latency` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Credenciales OAuth de Google Cloud |
 | `PUBLIC_URL` | URL pública (OAuth callback + links que manda el bot) |
 | `PORT` | Puerto HTTP (default 8080) |
@@ -226,6 +229,28 @@ endpoints y dice qué está roto, y escritura de calendario que pasa por la mism
 tarjeta de confirmación de Telegram — con las advertencias rechazando el plan salvo que se las
 reconozca explícitamente. Setup y referencia de tools: **[docs/mcp.md](docs/mcp.md)**.
 
+## Calidad y precio
+
+El bot vive del tool-calling en varios pasos, que es justo en lo que peor rinden los endpoints
+más baratos. En vez de elegir de una vez entre "barato" y "bueno", mantiene un piso y sube de
+modelo solo cuando hace falta:
+
+- **Piso de ruteo.** `OPENROUTER_QUALITY_FLOOR` (por defecto `8bit`) deja fuera los endpoints de
+  4 bits, los más baratos y los menos confiables con herramientas. `OPENROUTER_MAX_PRICE` es el
+  techo del otro lado — vale solo para el modelo de todos los días, porque un techo lo bastante
+  bajo como para servir de algo dejaría al de refuerzo sin ningún endpoint. Si entre los dos no queda ningún endpoint, el pedido se reintenta una vez
+  sin esos filtros y queda avisado en el log: no responder nada es peor que responder barato.
+- **Ruteo equilibrado por defecto.** `OPENROUTER_SORT=auto` deja la elección al equilibrio propio
+  de OpenRouter (saltea providers con caídas recientes y después pondera por el inverso del
+  cuadrado del precio). Fijar `price` apaga ese equilibrio y siempre toma el endpoint más
+  barato, por mal que esté funcionando.
+- **Escalado ante fallo.** Con `OPENROUTER_MODEL_STRONG` configurado, el turno que hace saltar
+  una de las redes de seguridad — decir que hizo algo, anunciar una tarjeta que nunca anotó,
+  prometer trabajo que no hizo, o proponer un plan que el calendario real rechazó — termina en
+  el modelo fuerte. Los turnos que salen bien no lo pagan nunca.
+
+`/diag` muestra el ruteo vigente y prueba los dos modelos.
+
 ## Cómo se confirman los cambios de calendario
 
 Nada llega a Google Calendar sin que toques un botón:
@@ -233,9 +258,13 @@ Nada llega a Google Calendar sin que toques un botón:
 - Cada creación, movida o borrado que decide el asistente queda **anotado**, no ejecutado. Al
   final del turno recibís **una sola tarjeta** con los cambios numerados y agrupados por día,
   con Confirmar / Cancelar.
-- Antes de anotar nada, el asistente está *obligado* a leer los días afectados
-  (`get_events` / `find_free_slots`) en ese mismo turno, y los ids de eventos tienen que salir
-  de esa lectura: así los ids viejos ya no generan una pared de "Not Found".
+- La tarjeta se responde con sus botones **o escribiendo `Confirmar` / `Cancelar`**, así que
+  una tarjeta que no llegó a aparecer ya no deja el pedido colgado. Y si un turno no anota
+  nada, el asistente no puede hablarte de una tarjeta que no va a salir.
+- Los días afectados siempre se leen en ese mismo turno antes de anotar: si el asistente se
+  olvida, la herramienta lee el día y se lo devuelve, así nada se planifica a ciegas. Los ids
+  de eventos para mover o borrar tienen que salir igual de esa lectura: así los ids viejos ya
+  no generan una pared de "Not Found".
 - Después el plan se valida contra el calendario real: eventos que ya no existen, horarios que
   terminan antes de empezar, acciones repetidas dentro del plan, duplicados exactos y solapes
   se muestran en la tarjeta. Los errores bloquean la confirmación; las advertencias solo se

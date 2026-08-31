@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { t } from "../i18n.js";
 import { isGoogleConnected } from "../google/auth.js";
 import { findDuplicates } from "../google/calendar.js";
-import { checkModel } from "../agent/openrouter.js";
+import { checkModel, routingSummary } from "../agent/openrouter.js";
 import { sortPlan } from "../agent/plan.js";
 import type { PendingRequest } from "../agent/tools/index.js";
 import {
@@ -15,6 +15,7 @@ import {
   describeAgentError,
   dropPendingCards,
   executePendingAction,
+  livePendingCard,
   resetHistory,
   runAgent,
 } from "../agent/agent.js";
@@ -90,6 +91,54 @@ async function sendCard(ctx: Context, card: PendingRequest) {
   if (sent) attachCardMessage(card.id, String(sent.chat.id), sent.message_id);
 }
 
+/**
+ * Typed equivalents of the card's buttons. Narrow on purpose: an ambiguous "ok"
+ * or "dale" must never apply a plan the user was not even looking at.
+ */
+const CONFIRM_TEXT =
+  /^\s*[✅👍]?\s*(?:s[ií],?\s*)?(?:lo\s+|la\s+)?confirm(?:o|a|as|ar|arlo|arla|ado|ada|ed|s)?\s*[.!👍✅]*\s*$/i;
+const CANCEL_TEXT =
+  /^\s*❌?\s*(?:no,?\s*)?(?:lo\s+|la\s+)?cancel(?:o|a|as|ar|arlo|arla|ado|ada|led|s)?\s*[.!❌]*\s*$/i;
+
+/** Puts the outcome under the card itself, and sends it as a message too. */
+async function closeCard(ctx: Context, id: number, outcome: string) {
+  const card = cardMessage(id);
+  if (card) {
+    // Editing with no reply_markup also takes the buttons away.
+    await ctx.api
+      .editMessageText(card.chatId, card.messageId, `${card.summary}\n\n${outcome}`.slice(0, TELEGRAM_LIMIT))
+      .catch(() => {}); // too old to edit, or never delivered
+  }
+  await sendLong(ctx, outcome);
+}
+
+/**
+ * Answering a card used to be possible ONLY through its inline buttons, so a
+ * card that never rendered (or simply scrolled away) left the user with no way
+ * at all to apply what they had just asked for — they typed "Confirmar" and
+ * nothing happened. Now it works, and when nothing is pending the answer says
+ * exactly that instead of the model inventing a card that was never sent.
+ * Returns true when the message was an answer and the turn is over.
+ */
+async function handleTypedAnswer(ctx: Context, text: string): Promise<boolean> {
+  const confirm = CONFIRM_TEXT.test(text);
+  if (!confirm && !CANCEL_TEXT.test(text)) return false;
+
+  const card = livePendingCard();
+  if (!card) {
+    await ctx.reply(t("nothingPending"));
+    return true;
+  }
+  if (!confirm) {
+    await cancelPendingAction(card.id);
+    await closeCard(ctx, card.id, t("markCancelled"));
+    return true;
+  }
+  const outcome = await executePendingAction(card.id);
+  await closeCard(ctx, card.id, outcome.text);
+  return true;
+}
+
 let botRunning = false;
 export const isBotRunning = () => botRunning;
 export const setBotRunning = (v: boolean) => {
@@ -162,7 +211,7 @@ bot.command(["duplicates", "duplicados"], async (ctx) => {
 bot.command("diag", async (ctx) => {
   await ctx.reply(t("diagRunning"));
   const result = await checkModel();
-  await ctx.reply(
+  const lines = [
     result.ok
       ? t("diagOk", {
           model: result.model,
@@ -171,7 +220,22 @@ bot.command("diag", async (ctx) => {
           cost: result.cost !== undefined ? t("diagCost", { cost: result.cost.toFixed(6) }) : "",
         })
       : t("diagFail", { model: result.model, error: result.error ?? "" }),
-  );
+    t("diagRouting", { routing: routingSummary() }),
+  ];
+  // The reinforcement model is worth testing here precisely because it is not
+  // used every day: a typo in it would only surface on the worst turn.
+  const strong = config.OPENROUTER_MODEL_STRONG;
+  if (!strong) {
+    lines.push(t("diagStrongOff"));
+  } else {
+    const backup = await checkModel(strong);
+    lines.push(
+      backup.ok
+        ? t("diagStrongOk", { model: backup.model, latency: backup.latencyMs })
+        : t("diagStrongFail", { model: backup.model, error: backup.error ?? "" }),
+    );
+  }
+  await ctx.reply(lines.join("\n"));
 });
 
 bot.on("message:text", async (ctx) => {
@@ -179,6 +243,7 @@ bot.on("message:text", async (ctx) => {
     await ctx.reply(t("needsGoogle", { url: `${config.PUBLIC_URL}/oauth/login` }));
     return;
   }
+  if (await handleTypedAnswer(ctx, ctx.message.text)) return;
   await ctx.replyWithChatAction("typing");
   const typing = setInterval(() => {
     ctx.replyWithChatAction("typing").catch(() => {});
@@ -186,7 +251,17 @@ bot.on("message:text", async (ctx) => {
   try {
     const result = await runAgent(ctx.message.text);
     clearInterval(typing);
-    for (const card of result.pending) await sendCard(ctx, card);
+    for (const card of result.pending) {
+      try {
+        await sendCard(ctx, card);
+      } catch (err) {
+        // A card nobody ever saw must not stay confirmable: a later "confirmar"
+        // would apply a plan the user never got to read.
+        console.error("Card delivery failed:", err);
+        await cancelPendingAction(card.id);
+        await ctx.reply(t("cardNotShown"));
+      }
+    }
     await sendLong(ctx, result.text);
   } catch (err) {
     clearInterval(typing);
