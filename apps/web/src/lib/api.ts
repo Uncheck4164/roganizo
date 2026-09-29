@@ -4,6 +4,7 @@ export interface ApiEvent {
   start: string;
   end: string;
   recurring: boolean;
+  location?: string;
   description?: string;
 }
 
