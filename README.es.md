@@ -58,7 +58,7 @@ docker run -d --name roganizo --restart unless-stopped \
 ```
 
 Abrí **http://localhost:8080** y seguí el asistente guiado: token de Telegram, OAuth de Google,
-API key de OpenRouter, contraseña de la web, zona horaria e idioma. El asistente trae ayuda paso
+API key del LLM (OpenAI u OpenRouter), contraseña de la web, zona horaria e idioma. El asistente trae ayuda paso
 a paso para cada proveedor y guarda todo en SQLite, dentro del volumen `/data`.
 
 > `--restart unless-stopped` no es opcional: al guardar la configuración el proceso se reinicia
@@ -90,8 +90,8 @@ exponé el puerto **8080** por HTTPS y poné `PUBLIC_URL` con tu dominio.
 
 ## Prerrequisitos paso a paso (una sola vez)
 
-Vas a necesitar tres cosas: un bot de Telegram, credenciales de Google y una key de OpenRouter.
-Todo lo de abajo es gratis.
+Vas a necesitar tres cosas: un bot de Telegram, credenciales de Google y una key del LLM (OpenAI
+u OpenRouter). Todo lo de abajo es gratis, salvo el uso del modelo.
 
 ### 1. Bot de Telegram
 
@@ -151,7 +151,19 @@ terceros; si cambian el flujo de activación, seguí las instrucciones de su sit
    > web empiezan a contestar `invalid_grant` tanto en Calendar como en Tasks. Agregarte como
    > test user no lo evita.
 
-### 3. OpenRouter (el LLM)
+### 3. El LLM: OpenAI u OpenRouter
+
+Elegilo con `LLM_PROVIDER` (`openrouter` por defecto, u `openai`). Solo hace falta la key del
+proveedor activo.
+
+**OpenAI**
+
+1. Andá a **[platform.openai.com/api-keys](https://platform.openai.com/api-keys)** y creá una
+   key (`sk-...`). Esa es `OPENAI_API_KEY`. La cuenta necesita saldo cargado en Billing.
+2. Poné `LLM_PROVIDER=openai`. El modelo por defecto es `gpt-6-luna` (el más rápido y barato);
+   como `OPENAI_MODEL_STRONG` conviene `gpt-6.1-sol`. Los pedidos van por la Responses API.
+
+**OpenRouter**
 
 1. Creá una cuenta en **[openrouter.ai](https://openrouter.ai)**.
 2. Andá a **[openrouter.ai/keys](https://openrouter.ai/keys)** y creá una key (`sk-or-v1-...`).
@@ -182,6 +194,10 @@ puede setear como variable de entorno.
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Token de @BotFather |
 | `TELEGRAM_ALLOWED_USER_ID` | Tu user ID numérico — el bot ignora al resto |
+| `LLM_PROVIDER` | `openrouter` (default) u `openai` |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | Key y modelo de OpenAI (default `gpt-6-luna`) |
+| `OPENAI_MODEL_STRONG` | Igual que `OPENROUTER_MODEL_STRONG`, para OpenAI (ej. `gpt-6.1-sol`; vacío = nunca) |
+| `OPENAI_REASONING_EFFORT` | Razonamiento del modelo base: `none` (default), `low`, `medium`, `high`. `gpt-6.1-sol` y `gpt-6-astra` piden `low` o más. El de refuerzo siempre corre en `low` |
 | `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` | LLM (default `deepseek/deepseek-v4-flash-0731`) |
 | `OPENROUTER_MODEL_STRONG` | Modelo mejor al que escala el agente cuando el barato se equivoca en un turno (vacío = nunca) |
 | `OPENROUTER_QUALITY_FLOOR` | Cuantización mínima del endpoint: `any`, `6bit`, `8bit` (default), `16bit` |
@@ -218,7 +234,8 @@ Primer uso: mandale `/start` al bot → te da el link para conectar Google → l
 - `/web` — link al panel
 - `/duplicados` (o `/duplicates`) — busca eventos repetidos con el mismo título y horario en
   los próximos 60 días y propone dejar una sola copia de cada uno, con un solo toque
-- `/diag` — una llamada real a OpenRouter: modelo, proveedor que respondió, latencia y costo
+- `/diag` — una llamada real al proveedor de LLM activo: modelo, proveedor que respondió,
+  latencia y costo (el costo solo lo informa OpenRouter)
 - `/reset` — borra la memoria de conversación y las confirmaciones pendientes
 
 ## Servidor MCP
@@ -281,7 +298,7 @@ pregunta antes, igual que el calendario.
 ## Arquitectura
 
 ```
-Telegram ⇄ grammY ⇄ Agente LLM (OpenRouter, tool-calling)
+Telegram ⇄ grammY ⇄ Agente LLM (OpenAI u OpenRouter, tool-calling)
                         ├─ Google Calendar (eventos, RRULE, huecos libres, conflictos)
                         ├─ Google Tasks (to-dos)
                         └─ SQLite (notas, recordatorios, historial, configuración)

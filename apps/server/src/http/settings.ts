@@ -10,6 +10,7 @@ import {
   sourceOf,
 } from "../config.js";
 import {
+  apiKeyFor,
   isEnvOnlyKey,
   isRequiredKey,
   isSecretKey,
@@ -82,8 +83,9 @@ settingsRoutes.get("/api/settings", (c) => {
       secret,
       configured,
       // Optional keys have a working default: only a required one without a
-      // value is something the user still has to do.
-      required: isRequiredKey(key),
+      // value is something the user still has to do. Of the two API keys, only
+      // the active provider's one is.
+      required: isRequiredKey(key) || key === apiKeyFor(config.LLM_PROVIDER),
       source: sourceOf(key),
       group: info.group,
       envOnly: info.envOnly,

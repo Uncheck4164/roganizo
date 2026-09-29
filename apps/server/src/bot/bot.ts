@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { t } from "../i18n.js";
 import { isGoogleConnected } from "../google/auth.js";
 import { findDuplicates } from "../google/calendar.js";
-import { checkModel, routingSummary } from "../agent/openrouter.js";
+import { checkModel, providerName, routingSummary, strongModel } from "../agent/llm.js";
 import { sortPlan } from "../agent/plan.js";
 import type { PendingRequest } from "../agent/tools/index.js";
 import {
@@ -209,22 +209,23 @@ bot.command(["duplicates", "duplicados"], async (ctx) => {
 
 // Checks the model end to end: key, model id, routing and cost of one call.
 bot.command("diag", async (ctx) => {
-  await ctx.reply(t("diagRunning"));
+  await ctx.reply(t("diagRunning", { provider: providerName() }));
   const result = await checkModel();
   const lines = [
     result.ok
       ? t("diagOk", {
+          llm: providerName(),
           model: result.model,
           provider: result.provider ?? "?",
           latency: result.latencyMs,
           cost: result.cost !== undefined ? t("diagCost", { cost: result.cost.toFixed(6) }) : "",
         })
-      : t("diagFail", { model: result.model, error: result.error ?? "" }),
+      : t("diagFail", { llm: providerName(), model: result.model, error: result.error ?? "" }),
     t("diagRouting", { routing: routingSummary() }),
   ];
   // The reinforcement model is worth testing here precisely because it is not
   // used every day: a typo in it would only surface on the worst turn.
-  const strong = config.OPENROUTER_MODEL_STRONG;
+  const strong = strongModel();
   if (!strong) {
     lines.push(t("diagStrongOff"));
   } else {

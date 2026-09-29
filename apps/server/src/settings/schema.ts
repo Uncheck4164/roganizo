@@ -10,7 +10,17 @@ import { z } from "zod";
 export const settingsSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(10),
   TELEGRAM_ALLOWED_USER_ID: z.coerce.number().int(),
-  OPENROUTER_API_KEY: z.string().min(10),
+  // Which API the agent talks to. Only the active provider's key is required.
+  LLM_PROVIDER: z.enum(["openrouter", "openai"]).default("openrouter"),
+  OPENAI_API_KEY: z.string().min(10).or(z.literal("")).default(""),
+  OPENAI_MODEL: z.string().default("gpt-6-luna"),
+  // Same role as OPENROUTER_MODEL_STRONG. Empty = never escalate.
+  OPENAI_MODEL_STRONG: z.string().default(""),
+  // Reasoning effort of the everyday model. "none" is the fastest and cheapest,
+  // and the only one that still allows a temperature; GPT-6.1 Sol and GPT-6
+  // Astra reject it, so pick "low" or above if one of those is the base model.
+  OPENAI_REASONING_EFFORT: z.enum(["none", "low", "medium", "high"]).default("none"),
+  OPENROUTER_API_KEY: z.string().min(10).or(z.literal("")).default(""),
   OPENROUTER_MODEL: z.string().default("deepseek/deepseek-v4-flash-0731"),
   // Stronger model the agent switches to mid-turn when the cheap one visibly
   // fails (a guard trips, the plan needs a revision). Empty = never escalate.
@@ -50,6 +60,9 @@ export const settingsSchema = z.object({
   DATABASE_PATH: z.string().default("./data/roganizo.db"),
   // Language of every user-facing string (bot messages, briefing, agent replies).
   LANGUAGE: z.enum(["es", "en"]).default("es"),
+}).superRefine((s, ctx) => {
+  const key = apiKeyFor(s.LLM_PROVIDER);
+  if (s[key].length < 10) ctx.addIssue({ code: "custom", path: [key], message: "Required" });
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -63,6 +76,11 @@ export type SettingKey = keyof Settings;
 export const looseSettingsSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().default("").catch(""),
   TELEGRAM_ALLOWED_USER_ID: z.coerce.number().int().default(0).catch(0),
+  LLM_PROVIDER: z.enum(["openrouter", "openai"]).default("openrouter").catch("openrouter"),
+  OPENAI_API_KEY: z.string().default("").catch(""),
+  OPENAI_MODEL: z.string().default("gpt-6-luna").catch("gpt-6-luna"),
+  OPENAI_MODEL_STRONG: z.string().default("").catch(""),
+  OPENAI_REASONING_EFFORT: z.enum(["none", "low", "medium", "high"]).default("none").catch("none"),
   OPENROUTER_API_KEY: z.string().default("").catch(""),
   OPENROUTER_MODEL: z
     .string()
@@ -120,6 +138,7 @@ export const SETTING_KEYS = Object.keys(settingsSchema.shape) as SettingKey[];
 /** Values that must never travel back to the browser. */
 export const SECRET_KEYS = [
   "TELEGRAM_BOT_TOKEN",
+  "OPENAI_API_KEY",
   "OPENROUTER_API_KEY",
   "GOOGLE_CLIENT_SECRET",
   "WEB_PASSWORD",
@@ -131,14 +150,19 @@ export const ENV_ONLY_KEYS = ["DATABASE_PATH"] as const;
 /** Managed by the app, never shown nor editable in the UI. */
 export const HIDDEN_KEYS = ["WEB_SESSION_SECRET"] as const;
 
+/** The API key the given provider needs; the other provider's key is optional. */
+export function apiKeyFor(provider: "openrouter" | "openai"): "OPENAI_API_KEY" | "OPENROUTER_API_KEY" {
+  return provider === "openai" ? "OPENAI_API_KEY" : "OPENROUTER_API_KEY";
+}
+
 /**
  * Keys with no usable default: until the user provides them the UI must show an
- * empty input, not the loose-schema placeholder (0, "").
+ * empty input, not the loose-schema placeholder (0, ""). The active provider's
+ * API key is required too, but that depends on LLM_PROVIDER (see apiKeyFor).
  */
 export const REQUIRED_KEYS = [
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_ALLOWED_USER_ID",
-  "OPENROUTER_API_KEY",
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
   "WEB_PASSWORD",
@@ -155,8 +179,9 @@ export function isRequiredKey(key: string): boolean {
 export const EMPTY_ALLOWED_KEYS = [
   "CALLMEBOT_USER",
   "BRIEFING_TIME",
-  // Empty is a real choice here: no reinforcement model, no price ceiling, and
-  // "let OpenRouter pick the provider" respectively.
+  // Empty is a real choice here: no reinforcement model (either provider), no
+  // price ceiling, and "let OpenRouter pick the provider" respectively.
+  "OPENAI_MODEL_STRONG",
   "OPENROUTER_MODEL_STRONG",
   "OPENROUTER_MAX_PRICE",
   "OPENROUTER_PROVIDER_ORDER",
@@ -175,6 +200,11 @@ export const SETTINGS_META: Record<Exclude<SettingKey, "WEB_SESSION_SECRET">, Se
   TELEGRAM_BOT_TOKEN: { group: "telegram", secret: true, envOnly: false },
   TELEGRAM_ALLOWED_USER_ID: { group: "telegram", secret: false, envOnly: false },
   CALLMEBOT_USER: { group: "telegram", secret: false, envOnly: false },
+  LLM_PROVIDER: { group: "model", secret: false, envOnly: false },
+  OPENAI_API_KEY: { group: "model", secret: true, envOnly: false },
+  OPENAI_MODEL: { group: "model", secret: false, envOnly: false },
+  OPENAI_MODEL_STRONG: { group: "model", secret: false, envOnly: false },
+  OPENAI_REASONING_EFFORT: { group: "model", secret: false, envOnly: false },
   OPENROUTER_API_KEY: { group: "model", secret: true, envOnly: false },
   OPENROUTER_MODEL: { group: "model", secret: false, envOnly: false },
   OPENROUTER_MODEL_STRONG: { group: "model", secret: false, envOnly: false },
