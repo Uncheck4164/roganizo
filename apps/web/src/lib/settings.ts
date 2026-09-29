@@ -29,6 +29,7 @@ export interface SettingsPayload {
 export interface SetupStatus {
   setupRequired: boolean;
   passwordSet: boolean;
+  authenticated: boolean;
   missing: string[];
 }
 
@@ -54,6 +55,77 @@ export function fetchSetupStatus(): Promise<SetupStatus> {
 
 export function fetchSettings(): Promise<SettingsPayload> {
   return fetchJson<SettingsPayload>("/api/settings");
+}
+
+export type TelegramCheckResult =
+  | { ok: true; username: string; name: string }
+  | { ok: false; error: string };
+
+export type TelegramLinkResult =
+  | { ok: true; link: string; username: string; expiresAt: string }
+  | { ok: false; error: string };
+
+export interface TelegramLinkStatus {
+  status: "idle" | "waiting" | "linked" | "expired" | "error";
+  userId?: number;
+  name?: string;
+  error?: string;
+}
+
+export type LlmCheckResult =
+  | { ok: true; provider: string; model: string; latencyMs: number }
+  | { ok: false; model: string; error: string };
+
+export interface GoogleSetupInfo {
+  redirectUri: string;
+  clientConfigured: boolean;
+  connected: boolean;
+}
+
+export interface GoogleCheckResult {
+  ok: boolean;
+  calendar: "ok" | string;
+  tasks: "ok" | string;
+}
+
+async function postSetup<T>(url: string): Promise<T> {
+  if (IS_DEMO) {
+    const { demoFetch } = await import("./demo");
+    return demoFetch<T>(url === "/api/setup/telegram/link" ? `${url}?action=start` : url);
+  }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    credentials: "same-origin",
+  });
+  const body = (await res.json().catch(() => null)) as T | null;
+  if (!res.ok || body === null) throw new Error(`${url}: HTTP ${res.status}`);
+  return body;
+}
+
+export function checkTelegram(): Promise<TelegramCheckResult> {
+  return postSetup<TelegramCheckResult>("/api/setup/telegram/check");
+}
+
+export function startTelegramLink(): Promise<TelegramLinkResult> {
+  return postSetup<TelegramLinkResult>("/api/setup/telegram/link");
+}
+
+export function fetchTelegramLinkStatus(): Promise<TelegramLinkStatus> {
+  return fetchJson<TelegramLinkStatus>("/api/setup/telegram/link");
+}
+
+export function checkLlm(): Promise<LlmCheckResult> {
+  return postSetup<LlmCheckResult>("/api/setup/llm/check");
+}
+
+export function fetchGoogleSetup(): Promise<GoogleSetupInfo> {
+  return fetchJson<GoogleSetupInfo>("/api/setup/google");
+}
+
+export function checkGoogle(): Promise<GoogleCheckResult> {
+  return postSetup<GoogleCheckResult>("/api/setup/google/check");
 }
 
 /** Sends only the keys the user actually edited. */
@@ -249,8 +321,7 @@ const HELP_ES: Partial<Record<SettingsGroupKey, HelpDoc>> = {
         links: [{ label: "@BotFather", url: "https://t.me/BotFather" }],
       },
       {
-        text: "Escribile a @userinfobot y te contesta con tu ID numérico. Ese es el único usuario que el bot va a atender.",
-        links: [{ label: "@userinfobot", url: "https://t.me/userinfobot" }],
+        text: "Tocá «Vincular mi cuenta» y abrí el enlace: al iniciar el bot, Roganizo detecta tu ID automáticamente y sólo atiende a esa cuenta.",
       },
       {
         text: "CallMeBot es opcional y sirve para las llamadas de urgencia: mandale /start y activá las llamadas desde tu cuenta. Después poné acá tu usuario de Telegram con @. Si lo dejás vacío, no hay llamadas.",
@@ -281,7 +352,7 @@ const HELP_ES: Partial<Record<SettingsGroupKey, HelpDoc>> = {
       },
       {
         text: "OpenRouter: elegí el modelo en el catálogo y pegá su identificador completo, con la barra incluida.",
-        code: "deepseek/deepseek-chat",
+        code: "deepseek/deepseek-v4-flash-0731",
         links: [{ label: "openrouter.ai/models", url: "https://openrouter.ai/models" }],
       },
       {
@@ -304,18 +375,17 @@ const HELP_ES: Partial<Record<SettingsGroupKey, HelpDoc>> = {
         ],
       },
       {
-        text: "En Credenciales elegí «Crear credenciales» → «ID de cliente de OAuth» y como tipo de aplicación poné «Aplicación web».",
-        links: [{ label: "Credenciales", url: "https://console.cloud.google.com/apis/credentials" }],
-      },
-      {
-        text: "En «URI de redireccionamiento autorizados» agregá exactamente esta dirección:",
-        code: "{publicUrl}/oauth/callback",
-      },
-      {
-        text: "En la pantalla de consentimiento de OAuth, agregate a vos mismo como usuario de prueba con tu cuenta de Google. Si no, el login te va a rechazar.",
+        text: "Configurá la pantalla de consentimiento: elegí audiencia Externa, poné un nombre para la app y tu email de soporte y contacto.",
         links: [{ label: "Pantalla de consentimiento", url: "https://console.cloud.google.com/apis/credentials/consent" }],
       },
-      { text: "Copiá el Client ID y el Client secret que quedaron creados y pegalos acá arriba." },
+      {
+        text: "En Audiencia, tocá «Publicar app» para dejarla «En producción». En Testing, Google vence el acceso cada 7 días y el bot deja de funcionar a la semana.",
+      },
+      {
+        text: "Creá un ID de cliente OAuth de tipo «Aplicación web» y agregá como URI de redireccionamiento exactamente la dirección que muestra Roganizo.",
+        links: [{ label: "Credenciales", url: "https://console.cloud.google.com/apis/credentials" }],
+      },
+      { text: "Copiá el Client ID y el Client secret. En el primer ingreso, si Google dice que no verificó la app, elegí «Configuración avanzada» → «Ir a la app»: es tu propia aplicación." },
     ],
   },
 };
@@ -328,8 +398,7 @@ const HELP_EN: Partial<Record<SettingsGroupKey, HelpDoc>> = {
         links: [{ label: "@BotFather", url: "https://t.me/BotFather" }],
       },
       {
-        text: "Message @userinfobot and it replies with your numeric ID. That is the only user the bot will answer.",
-        links: [{ label: "@userinfobot", url: "https://t.me/userinfobot" }],
+        text: "Choose “Link my account” and open the link: when you start the bot, Roganizo detects your ID automatically and only answers that account.",
       },
       {
         text: "CallMeBot is optional and powers the urgent calls: send it /start and enable calls from your account. Then put your Telegram username here, with the @. Leave it empty and there are no calls.",
@@ -360,7 +429,7 @@ const HELP_EN: Partial<Record<SettingsGroupKey, HelpDoc>> = {
       },
       {
         text: "OpenRouter: pick the model from the catalogue and paste its full identifier, slash included.",
-        code: "deepseek/deepseek-chat",
+        code: "deepseek/deepseek-v4-flash-0731",
         links: [{ label: "openrouter.ai/models", url: "https://openrouter.ai/models" }],
       },
       {
@@ -383,18 +452,17 @@ const HELP_EN: Partial<Record<SettingsGroupKey, HelpDoc>> = {
         ],
       },
       {
-        text: "Under Credentials pick “Create credentials” → “OAuth client ID” and choose “Web application” as the application type.",
-        links: [{ label: "Credentials", url: "https://console.cloud.google.com/apis/credentials" }],
-      },
-      {
-        text: "In “Authorised redirect URIs” add exactly this address:",
-        code: "{publicUrl}/oauth/callback",
-      },
-      {
-        text: "On the OAuth consent screen, add yourself as a test user with your Google account. Otherwise the login will reject you.",
+        text: "Configure the OAuth consent screen: choose External, then enter an app name and your support and contact email.",
         links: [{ label: "Consent screen", url: "https://console.cloud.google.com/apis/credentials/consent" }],
       },
-      { text: "Copy the Client ID and the Client secret that were created and paste them above." },
+      {
+        text: "Under Audience, click “Publish app” so its status becomes “In production”. In Testing, Google expires access every 7 days and the bot stops working a week later.",
+      },
+      {
+        text: "Create an OAuth client ID of type “Web application” and add exactly the redirect URI shown by Roganizo.",
+        links: [{ label: "Credentials", url: "https://console.cloud.google.com/apis/credentials" }],
+      },
+      { text: "Copy the Client ID and Client secret. On the first sign-in, if Google says it has not verified the app, choose “Advanced” → “Go to the app”: it is your own application." },
     ],
   },
 };

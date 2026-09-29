@@ -2,7 +2,16 @@
 // Every string follows the language currently stored under `rg-lang`.
 import type { ApiEvent, ApiNote, ApiStats, ApiStatus, ApiTask } from "./api";
 import { readLang, type Lang } from "./i18n";
-import type { SettingsPayload, SetupStatus } from "./settings";
+import type {
+  GoogleCheckResult,
+  GoogleSetupInfo,
+  LlmCheckResult,
+  SettingsPayload,
+  SetupStatus,
+  TelegramCheckResult,
+  TelegramLinkResult,
+  TelegramLinkStatus,
+} from "./settings";
 
 export const DEMO = import.meta.env.VITE_DEMO === "1";
 
@@ -256,7 +265,7 @@ function settings(lang: Lang): SettingsPayload {
       OPENAI_MODEL_STRONG: "",
       OPENAI_REASONING_EFFORT: "none",
       OPENROUTER_API_KEY: "",
-      OPENROUTER_MODEL: "deepseek/deepseek-chat",
+      OPENROUTER_MODEL: "deepseek/deepseek-v4-flash-0731",
       OPENROUTER_MODEL_STRONG: "",
       OPENROUTER_QUALITY_FLOOR: "8bit",
       OPENROUTER_MAX_PRICE: "",
@@ -314,9 +323,21 @@ export function demoFetch<T>(url: string): Promise<T> {
       now: new Date().toISOString(),
     } satisfies ApiStatus;
   } else if (path === "/setup/status") {
-    data = { setupRequired: false, passwordSet: true, missing: [] } satisfies SetupStatus;
+    data = { setupRequired: false, passwordSet: true, authenticated: true, missing: [] } satisfies SetupStatus;
   } else if (path === "/api/settings") {
     data = settings(lang);
+  } else if (path === "/api/setup/telegram/check") {
+    data = { ok: true, username: "roganizo_demo_bot", name: "Roganizo Demo" } satisfies TelegramCheckResult;
+  } else if (path === "/api/setup/telegram/link") {
+    data = u.searchParams.get("action") === "start"
+      ? ({ ok: true, link: "https://t.me/roganizo_demo_bot?start=demo", username: "roganizo_demo_bot", expiresAt: new Date(Date.now() + 600_000).toISOString() } satisfies TelegramLinkResult)
+      : ({ status: "linked", userId: 482915773, name: "Rogan" } satisfies TelegramLinkStatus);
+  } else if (path === "/api/setup/llm/check") {
+    data = { ok: true, provider: "openrouter", model: "deepseek/deepseek-v4-flash-0731", latencyMs: 420 } satisfies LlmCheckResult;
+  } else if (path === "/api/setup/google") {
+    data = { redirectUri: "https://roganizo.demo.dev/oauth/callback", clientConfigured: true, connected: true } satisfies GoogleSetupInfo;
+  } else if (path === "/api/setup/google/check") {
+    data = { ok: true, calendar: "ok", tasks: "ok" } satisfies GoogleCheckResult;
   } else if (path === "/api/events") {
     data = eventsBetween(u.searchParams.get("from")!, u.searchParams.get("to")!, lang);
   } else if (path === "/api/tasks") {

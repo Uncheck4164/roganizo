@@ -10,6 +10,7 @@ import { oauthRoutes } from "./http/oauth.js";
 import { apiRoutes } from "./http/api.js";
 import { calendarWriteRoutes } from "./http/calendar.js";
 import { onApplyRestart, settingsRoutes } from "./http/settings.js";
+import { setupRoutes } from "./http/setup.js";
 import { bot, setBotRunning } from "./bot/bot.js";
 import { startScheduler } from "./scheduler.js";
 
@@ -24,6 +25,7 @@ app.route("/", apiRoutes);
 // Mounted after apiRoutes so its own guard applies: /setup/status is public and
 // /api/settings stays reachable while no web password exists yet.
 app.route("/", settingsRoutes);
+app.route("/", setupRoutes);
 
 // Compiled SPA (apps/web/dist). In dev the Vite dev server with a proxy is used.
 const webDist = path.resolve(

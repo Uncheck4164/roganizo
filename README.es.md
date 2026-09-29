@@ -57,12 +57,22 @@ docker run -d --name roganizo --restart unless-stopped \
   -v roganizo-data:/data -p 8080:8080 roganizo
 ```
 
-Abrí **http://localhost:8080** y seguí el asistente guiado: token de Telegram, OAuth de Google,
-API key del LLM (OpenAI u OpenRouter), contraseña de la web, zona horaria e idioma. El asistente trae ayuda paso
-a paso para cada proveedor y guarda todo en SQLite, dentro del volumen `/data`.
+Abrí **http://localhost:8080** y seguí el asistente de cuatro pasos:
 
-> `--restart unless-stopped` no es opcional: al guardar la configuración el proceso se reinicia
-> para tomar los valores nuevos, y Docker tiene que volver a levantar el contenedor.
+1. **Telegram**: pegá el token del bot, tocá *Probar* y después *Vincular mi cuenta*, y apretá
+   Iniciar en Telegram. Tu user ID se completa solo.
+2. **IA**: elegí OpenAI u OpenRouter, pegá la key y tocá *Probar*.
+3. **Google**: la página te muestra la URI de redirección exacta para copiar en Google Cloud;
+   pegá el Client ID y el secret, tocá *Conectar Google* y después *Probar* (Calendar ✓ Tasks ✓).
+4. **Acceso**: la contraseña de la web; idioma y zona horaria se toman de tu navegador.
+
+Cada paso prueba el servicio real, así que una key mal copiada aparece ahí mismo y no como un
+bot que nunca contesta. Modelos, ruteo y el resto del ajuste fino quedan en *Avanzado*. Todo se
+guarda en SQLite, dentro del volumen `/data`.
+
+> `--restart unless-stopped` no es opcional: cuando cambia el token de Telegram, o al terminar el
+> setup, el proceso se reinicia solo para arrancar el bot, y Docker tiene que volver a levantar
+> el contenedor. Todo lo demás se aplica al instante.
 
 ### Camino B — con un archivo `.env`
 
@@ -102,9 +112,9 @@ u OpenRouter). Todo lo de abajo es gratis, salvo el uso del modelo.
    `roganizo_ramiro_bot`.
 5. BotFather te responde con un **token** con pinta de `123456789:AAE...`. Copialo: ese es
    `TELEGRAM_BOT_TOKEN`.
-6. Ahora conseguí tu **user ID numérico**: hablale a **[@userinfobot](https://t.me/userinfobot)**
-   y mandale `/start`. Te responde con tu ID (un número tipo `123456789`). Ese es
-   `TELEGRAM_ALLOWED_USER_ID`, y el bot ignora a cualquier otro usuario.
+6. Tu **user ID numérico** (`TELEGRAM_ALLOWED_USER_ID`, la única cuenta a la que el bot le
+   contesta) lo completa la página de configuración: tocá *Vincular mi cuenta* y apretá Iniciar
+   en Telegram. ¿Configurás con `.env`? Pedíselo a **[@userinfobot](https://t.me/userinfobot)**.
 
 <details>
 <summary><b>Opcional — llamadas telefónicas para recordatorios urgentes (CallMeBot)</b></summary>
@@ -132,19 +142,19 @@ terceros; si cambian el flujo de activación, seguí las instrucciones de su sit
 3. Andá a **APIs & Services → Library** y habilitá **las dos**:
    - **Google Calendar API**
    - **Google Tasks API**
-4. Andá a **APIs & Services → Credentials → Create credentials → OAuth client ID**.
-5. Tipo de aplicación: **Web application**.
-6. En **Authorized redirect URIs**, agregá tu callback:
+4. Andá a **OAuth consent screen**: público **External**, cualquier nombre de app y tu email
+   como soporte y contacto. Después tocá **Publish app** para sacarla de *Testing*. **No** hace
+   falta que Google la verifique: sos el único usuario, y el cartel de "app no verificada" se
+   pasa una sola vez con *Configuración avanzada → Ir a Roganizo*.
+5. Andá a **APIs & Services → Credentials → Create credentials → OAuth client ID**.
+6. Tipo de aplicación: **Web application**.
+7. En **Authorized redirect URIs**, agregá tu callback. El paso de Google de la página de
+   configuración te muestra el valor exacto con un botón para copiarlo; es `PUBLIC_URL` +
+   `/oauth/callback`:
    - producción: `https://TU-DOMINIO/oauth/callback`
    - desarrollo local: `http://localhost:8080/oauth/callback`
-
-   Tiene que coincidir exactamente con `PUBLIC_URL` + `/oauth/callback`, incluyendo
-   `http`/`https` y el puerto.
-7. Guardá y copiá el **Client ID** (`...apps.googleusercontent.com`) y el **Client secret**
+8. Guardá y copiá el **Client ID** (`...apps.googleusercontent.com`) y el **Client secret**
    (`GOCSPX-...`). Esos son `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`.
-8. Andá a **OAuth consent screen** y tocá **Publish app** para sacarla de *Testing*.
-   **No** hace falta que Google la verifique: sos el único usuario, y el cartel de "app no
-   verificada" se pasa una sola vez con *Configuración avanzada → Ir a Roganizo*.
 
    > **No la dejes en *Testing*.** Mientras la pantalla de consentimiento está en Testing,
    > Google vence todos los refresh tokens **a los 7 días**, y a la semana el bot y el panel
@@ -187,8 +197,9 @@ Podés configurar Roganizo de dos maneras, y se pueden combinar libremente:
 desde la pantalla de configuración le gana a lo que diga el entorno. Al guardar, el proceso se
 reinicia para tomar los valores nuevos (de ahí `--restart unless-stopped`).
 
-La única excepción es `DATABASE_PATH`: como define *dónde vive la configuración misma*, solo se
-puede setear como variable de entorno.
+Hay dos ajustes que solo se setean como variable de entorno: `DATABASE_PATH`, porque define
+*dónde vive la configuración misma*, y `PORT`, que tiene que coincidir con el puerto al que
+enruta tu contenedor o tu PaaS.
 
 | Variable | Qué es |
 |---|---|
@@ -206,7 +217,7 @@ puede setear como variable de entorno.
 | `OPENROUTER_SORT` | `auto` (default, OpenRouter equilibra precio y disponibilidad), `price`, `throughput` o `latency` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Credenciales OAuth de Google Cloud |
 | `PUBLIC_URL` | URL pública (OAuth callback + links que manda el bot) |
-| `PORT` | Puerto HTTP (default 8080) |
+| `PORT` | Puerto HTTP (default 8080; solo por entorno) |
 | `WEB_PASSWORD` | Contraseña de la web de solo lectura |
 | `WEB_SESSION_SECRET` | Secreto para firmar la cookie de sesión — **se autogenera si falta**, y se puede sobrescribir igual |
 | `CALLMEBOT_USER` | Tu @usuario de Telegram para llamadas de urgencia (vacío = sin llamadas) |

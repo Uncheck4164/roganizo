@@ -6,6 +6,7 @@ import { isGoogleConnected } from "../google/auth.js";
 import { findDuplicates } from "../google/calendar.js";
 import { checkModel, providerName, routingSummary, strongModel } from "../agent/llm.js";
 import { sortPlan } from "../agent/plan.js";
+import { claimLink, START_PAYLOAD } from "../setup/telegramLink.js";
 import type { PendingRequest } from "../agent/tools/index.js";
 import {
   attachCardMessage,
@@ -144,6 +145,14 @@ export const isBotRunning = () => botRunning;
 export const setBotRunning = (v: boolean) => {
   botRunning = v;
 };
+
+// Linking from the setup page: a /start carrying its one-time code comes from
+// the account about to become the allowed user, so it goes before the filter.
+bot.use(async (ctx, next) => {
+  const payload = ctx.message?.text?.match(START_PAYLOAD)?.[1];
+  if (payload && ctx.from && (await claimLink(payload, ctx.from, (text) => ctx.reply(text)))) return;
+  await next();
+});
 
 // Single-user: every other chat is ignored (the ID is logged so that
 // TELEGRAM_ALLOWED_USER_ID can be filled in the first time).

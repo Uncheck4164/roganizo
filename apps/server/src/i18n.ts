@@ -118,6 +118,17 @@ const es = {
   oauthMissingCode: "Falta el parámetro code",
   oauthSuccess: "✅ Google Calendar y Tasks conectados. Ya puedes volver a Telegram.",
   oauthError: "Error conectando Google: {message}",
+  oauthBadState:
+    "Este enlace de Google venció o no lo inició este servidor. Volvé a tocar «Conectar Google».",
+  oauthDenied: "Google no dio acceso ({error}). Si cancelaste, podés volver a intentarlo.",
+  setupLinked: "✅ Listo, {name}: esta cuenta quedó vinculada a Roganizo. Volvé a la web para seguir.",
+  setupLinkExpired: "Este enlace de vinculación venció. Generá uno nuevo desde la web.",
+  setupTelegramInvalid: "Telegram rechazó el token. Copialo de nuevo desde @BotFather.",
+  setupTelegramNoToken: "Primero guardá el token del bot.",
+  setupTelegramBusy:
+    "Otro programa está leyendo los mensajes de este bot (¿otra copia de Roganizo corriendo?).",
+  setupGoogleNotConnected: "Google todavía no está conectado.",
+  setupLlmNoKey: "Primero guardá la API key de {provider}.",
 } as const;
 
 export type MessageKey = keyof typeof es;
@@ -225,6 +236,17 @@ const en: Record<MessageKey, string> = {
   oauthMissingCode: "Missing the code parameter",
   oauthSuccess: "✅ Google Calendar and Tasks connected. You can go back to Telegram.",
   oauthError: "Error connecting Google: {message}",
+  oauthBadState:
+    "This Google link expired or was not started by this server. Tap “Connect Google” again.",
+  oauthDenied: "Google did not grant access ({error}). If you cancelled, you can try again.",
+  setupLinked: "✅ Done, {name}: this account is now linked to Roganizo. Go back to the web page to continue.",
+  setupLinkExpired: "This linking link expired. Create a new one from the web page.",
+  setupTelegramInvalid: "Telegram rejected the token. Copy it again from @BotFather.",
+  setupTelegramNoToken: "Save the bot token first.",
+  setupTelegramBusy:
+    "Another program is reading this bot's messages (another copy of Roganizo running?).",
+  setupGoogleNotConnected: "Google is not connected yet.",
+  setupLlmNoKey: "Save the {provider} API key first.",
 };
 
 const tables: Record<"es" | "en", Record<MessageKey, string>> = { es, en };

@@ -7,9 +7,25 @@ import { z } from "zod";
  * environment variable > zod default. Environment values are never copied into
  * the DB; only explicit saves from the setup UI write rows.
  */
+/** True for an IANA zone the runtime knows ("America/Santiago"), false for typos. */
+function isTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A real clock time, not just two pairs of digits ("99:99" used to pass). */
+const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** One canonical form, so the OAuth redirect never ends up with a double slash. */
+const stripTrailingSlashes = (url: string) => url.replace(/\/+$/, "");
+
 export const settingsSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(10),
-  TELEGRAM_ALLOWED_USER_ID: z.coerce.number().int(),
+  TELEGRAM_ALLOWED_USER_ID: z.coerce.number().int().positive(),
   // Which API the agent talks to. Only the active provider's key is required.
   LLM_PROVIDER: z.enum(["openrouter", "openai"]).default("openrouter"),
   OPENAI_API_KEY: z.string().min(10).or(z.literal("")).default(""),
@@ -44,19 +60,15 @@ export const settingsSchema = z.object({
   OPENROUTER_SORT: z.enum(["auto", "price", "throughput", "latency"]).default("auto"),
   GOOGLE_CLIENT_ID: z.string().min(5),
   GOOGLE_CLIENT_SECRET: z.string().min(5),
-  PUBLIC_URL: z.string().url().default("http://localhost:8080"),
-  PORT: z.coerce.number().int().default(8080),
+  PUBLIC_URL: z.string().url().transform(stripTrailingSlashes).default("http://localhost:8080"),
+  PORT: z.coerce.number().int().min(1).max(65535).default(8080),
   WEB_PASSWORD: z.string().min(4),
   WEB_SESSION_SECRET: z.string().min(16),
-  TIMEZONE: z.string().default("America/Santiago"),
+  TIMEZONE: z.string().refine(isTimeZone, "Unknown time zone").default("America/Santiago"),
   // Telegram username (@user) used for CallMeBot phone calls on unacknowledged
   // urgent reminders. Empty = no calls (message retries only).
   CALLMEBOT_USER: z.string().default(""),
-  BRIEFING_TIME: z
-    .string()
-    .regex(/^\d{2}:\d{2}$/)
-    .or(z.literal(""))
-    .default("07:30"),
+  BRIEFING_TIME: z.string().regex(CLOCK_TIME).or(z.literal("")).default("07:30"),
   DATABASE_PATH: z.string().default("./data/roganizo.db"),
   // Language of every user-facing string (bot messages, briefing, agent replies).
   LANGUAGE: z.enum(["es", "en"]).default("es"),
@@ -75,7 +87,7 @@ export type SettingKey = keyof Settings;
  */
 export const looseSettingsSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().default("").catch(""),
-  TELEGRAM_ALLOWED_USER_ID: z.coerce.number().int().default(0).catch(0),
+  TELEGRAM_ALLOWED_USER_ID: z.coerce.number().int().positive().default(0).catch(0),
   LLM_PROVIDER: z.enum(["openrouter", "openai"]).default("openrouter").catch("openrouter"),
   OPENAI_API_KEY: z.string().default("").catch(""),
   OPENAI_MODEL: z.string().default("gpt-6-luna").catch("gpt-6-luna"),
@@ -107,19 +119,19 @@ export const looseSettingsSchema = z.object({
   PUBLIC_URL: z
     .string()
     .url()
+    .transform(stripTrailingSlashes)
     .default("http://localhost:8080")
     .catch("http://localhost:8080"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080).catch(8080),
   WEB_PASSWORD: z.string().default("").catch(""),
   WEB_SESSION_SECRET: z.string().default("").catch(""),
-  TIMEZONE: z.string().default("America/Santiago").catch("America/Santiago"),
-  CALLMEBOT_USER: z.string().default("").catch(""),
-  BRIEFING_TIME: z
+  TIMEZONE: z
     .string()
-    .regex(/^\d{2}:\d{2}$/)
-    .or(z.literal(""))
-    .default("07:30")
-    .catch("07:30"),
+    .refine(isTimeZone)
+    .default("America/Santiago")
+    .catch("America/Santiago"),
+  CALLMEBOT_USER: z.string().default("").catch(""),
+  BRIEFING_TIME: z.string().regex(CLOCK_TIME).or(z.literal("")).default("07:30").catch("07:30"),
   DATABASE_PATH: z.string().default("./data/roganizo.db").catch("./data/roganizo.db"),
   LANGUAGE: z.enum(["es", "en"]).default("es").catch("es"),
 });
@@ -144,8 +156,12 @@ export const SECRET_KEYS = [
   "WEB_PASSWORD",
 ] as const;
 
-/** Configurable through the environment only (it locates the DB itself). */
-export const ENV_ONLY_KEYS = ["DATABASE_PATH"] as const;
+/**
+ * Configurable through the environment only. DATABASE_PATH locates the DB
+ * itself; PORT has to match the container/PaaS port mapping, so changing it from
+ * a page served on that very port could only ever take the page down.
+ */
+export const ENV_ONLY_KEYS = ["DATABASE_PATH", "PORT"] as const;
 
 /** Managed by the app, never shown nor editable in the UI. */
 export const HIDDEN_KEYS = ["WEB_SESSION_SECRET"] as const;
@@ -215,7 +231,7 @@ export const SETTINGS_META: Record<Exclude<SettingKey, "WEB_SESSION_SECRET">, Se
   GOOGLE_CLIENT_ID: { group: "google", secret: false, envOnly: false },
   GOOGLE_CLIENT_SECRET: { group: "google", secret: true, envOnly: false },
   PUBLIC_URL: { group: "server", secret: false, envOnly: false },
-  PORT: { group: "server", secret: false, envOnly: false },
+  PORT: { group: "server", secret: false, envOnly: true },
   DATABASE_PATH: { group: "server", secret: false, envOnly: true },
   WEB_PASSWORD: { group: "web", secret: true, envOnly: false },
   TIMEZONE: { group: "preferences", secret: false, envOnly: false },

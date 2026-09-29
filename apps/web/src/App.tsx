@@ -136,7 +136,9 @@ function Login({
 export default function App() {
   const { t, lang, setLang } = useI18n();
   const [tab, setTab] = useState<Tab>("cal");
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(
+    () => new URLSearchParams(window.location.search).has("google"),
+  );
   const [loginSetup, setLoginSetup] = useState(false);
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem("rg-theme") as Theme) ?? "dark",
@@ -145,7 +147,7 @@ export default function App() {
 
   // Setup gate: answered without a session, so it can run before the login screen.
   const setup = useQuery<SetupStatus>({
-    queryKey: ["setup"],
+    queryKey: ["setup-status"],
     queryFn: fetchSetupStatus,
     retry: false,
     refetchOnWindowFocus: false,
@@ -169,6 +171,10 @@ export default function App() {
 
   const setupRequired = setup.data?.setupRequired === true || loginSetup;
   const loggedOut = status.error instanceof UnauthorizedError;
+  const setupNeedsLogin =
+    setup.data?.setupRequired === true &&
+    setup.data.passwordSet === true &&
+    setup.data.authenticated !== true;
   const botOk = status.data?.ok ?? false;
 
   const toggleTheme = () => {
@@ -219,6 +225,19 @@ export default function App() {
     </div>
   );
 
+  if (setupNeedsLogin || (!setupRequired && loggedOut)) {
+    return shell(
+      <Login
+        theme={theme}
+        onOk={() => {
+          setLoginSetup(false);
+          void queryClient.invalidateQueries();
+        }}
+        onSetupRequired={() => setLoginSetup(true)}
+      />,
+    );
+  }
+
   if (setupRequired) {
     return shell(
       <>
@@ -252,16 +271,6 @@ export default function App() {
           <SettingsView theme={theme} mode="setup" missing={setup.data?.missing ?? []} />
         </main>
       </>,
-    );
-  }
-
-  if (loggedOut) {
-    return shell(
-      <Login
-        theme={theme}
-        onOk={() => queryClient.invalidateQueries()}
-        onSetupRequired={() => setLoginSetup(true)}
-      />,
     );
   }
 
