@@ -164,11 +164,26 @@ export interface DiagnosticsResult {
   error?: string;
 }
 
-/** Minimal round trip used by /diag: proves key, model and routing all work. */
+/**
+ * One throwaway tool. Sending it makes the check fail the way a real turn
+ * would on a model or endpoint that cannot call tools, which is all this bot does.
+ */
+const PROBE_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "ping",
+      description: "Connectivity probe. Never needs to be called.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+];
+
+/** Minimal round trip used by /diag and setup: proves key, model, routing and tool support. */
 export async function checkModel(model: string = baseModel()): Promise<DiagnosticsResult> {
   const started = Date.now();
   try {
-    const reply = await provider().singleCall([{ role: "user", content: "ping" }], undefined, model);
+    const reply = await provider().singleCall([{ role: "user", content: "Reply with: ok" }], PROBE_TOOLS, model);
     return {
       ok: true,
       model,

@@ -38,8 +38,13 @@ export function setSessionCookie(c: Context) {
   });
 }
 
+/** Whether the request carries a valid session cookie. */
+export function hasSession(c: Context): boolean {
+  return isValidToken(getCookie(c, COOKIE));
+}
+
 export async function requireSession(c: Context, next: Next) {
-  if (!isValidToken(getCookie(c, COOKIE))) {
+  if (!hasSession(c)) {
     return c.json({ error: "unauthorized" }, 401);
   }
   await next();

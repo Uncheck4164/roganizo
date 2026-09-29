@@ -22,7 +22,8 @@ import {
   type SettingKey,
 } from "../settings/schema.js";
 import { writeMany } from "../settings/store.js";
-import { requireSession, setSessionCookie } from "./auth.js";
+import { isBotRunning } from "../bot/bot.js";
+import { hasSession, requireSession, setSessionCookie } from "./auth.js";
 
 export const settingsRoutes = new Hono();
 
@@ -41,7 +42,7 @@ export function onApplyRestart(hook: ShutdownHook): void {
  * anywhere: that first-boot window is the only way to configure the app, and it
  * closes as soon as a password is saved.
  */
-async function requireSessionUnlessSetup(c: Context, next: Next) {
+export async function requireSessionUnlessSetup(c: Context, next: Next) {
   if (!isPasswordConfigured()) return next();
   return requireSession(c, next);
 }
@@ -64,6 +65,9 @@ settingsRoutes.get("/setup/status", (c) =>
   c.json({
     setupRequired: !isConfigured(),
     passwordSet: isPasswordConfigured(),
+    // With a password already set (e.g. from the environment) the setup screen
+    // needs a login first, or /api/settings answers 401 and the form never loads.
+    authenticated: hasSession(c),
     missing: [...missingKeys],
   }),
 );
@@ -119,7 +123,9 @@ settingsRoutes.put("/api/settings", async (c) => {
       errors[key] = "Value must be a string";
       continue;
     }
-    const value = raw.trim();
+    // Stored in canonical form: a trailing slash would put "//oauth/callback"
+    // in the redirect URI and Google would reject it as a mismatch.
+    const value = key === "PUBLIC_URL" ? raw.trim().replace(/\/+$/, "") : raw.trim();
     const check = validateOne(key, value);
     if (!check.ok) {
       errors[key] = check.message;
@@ -139,7 +145,13 @@ settingsRoutes.put("/api/settings", async (c) => {
   // that save in right away, or their very next request (e.g. apply) would 401.
   if (!passwordWasSet && isPasswordConfigured()) setSessionCookie(c);
 
-  return c.json({ ok: true, restartRequired: true, setupComplete: isConfigured() });
+  // Everything else is read from `config` at call time. The bot is the
+  // exception: grammY binds its token at construction, and it only starts once
+  // the configuration is complete — so until then there is nothing to restart,
+  // even when the token changes mid-setup.
+  const restartRequired =
+    isConfigured() && (Object.keys(patch).includes("TELEGRAM_BOT_TOKEN") || !isBotRunning());
+  return c.json({ ok: true, restartRequired, setupComplete: isConfigured() });
 });
 
 settingsRoutes.post("/api/settings/apply", (c) => {

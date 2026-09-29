@@ -29,11 +29,14 @@ apiRoutes.post("/login", async (c) => {
   return c.json({ ok: true });
 });
 
-// Everything below is READ-ONLY and requires a session. /api/settings is the one
-// exception: it carries its own guard so that it stays reachable during setup.
+// Everything below is READ-ONLY and requires a session. /api/settings and the
+// setup checks (/api/setup) are the exceptions: they carry their own guard so
+// that they stay reachable during setup.
 // The only write endpoint of the API lives in http/calendar.ts, mounted first.
 apiRoutes.use("/api/*", (c, next) =>
-  c.req.path.startsWith("/api/settings") ? next() : requireSession(c, next),
+  c.req.path.startsWith("/api/settings") || c.req.path.startsWith("/api/setup/")
+    ? next()
+    : requireSession(c, next),
 );
 
 apiRoutes.get("/api/status", (c) =>
