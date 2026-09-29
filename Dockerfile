@@ -8,6 +8,9 @@ WORKDIR /repo
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+# Not shipped in the image, but it is a workspace member: the lockfile lists it
+# and --frozen-lockfile refuses to install with its package.json missing.
+COPY apps/mcp/package.json apps/mcp/
 RUN pnpm install --frozen-lockfile
 
 COPY apps ./apps

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
+  apiKeyFor,
   isValueSet,
   looseSettingsSchema,
   settingsSchema,
@@ -88,6 +89,11 @@ export function reloadConfig(): void {
       missingKeys.push(key);
     }
   }
+  // The schema only checks the active provider's key once every other field
+  // passes (zod skips object refinements until then), which would hide it from
+  // the setup checklist on a fresh install.
+  const apiKey = apiKeyFor(config.LLM_PROVIDER);
+  if (config[apiKey].length < 10 && !missingKeys.includes(apiKey)) missingKeys.push(apiKey);
 }
 
 /** True when every required setting is present and valid. */
