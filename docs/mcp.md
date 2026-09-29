@@ -16,7 +16,7 @@ session cookie, and turns each endpoint into a tool.
 | `event`           | `/api/events/:id`     | one event by id, or a series master by seriesId      |
 | `tasks`           | `/api/tasks`          | Google Tasks to-dos                                  |
 | `notes`           | `/api/notes`          | notes stored in SQLite                               |
-| `reminders`       | `/api/reminders`      | reminders that have not fired                        |
+| `reminders`       | `/api/reminders`      | pending reminders, then those sent in the last 7 days |
 | `stats`           | `/api/stats`          | hours per activity and task counts for a week        |
 | `preview_changes` | `/api/calendar/plan`  | validates calendar changes, writes nothing           |
 | `apply_changes`   | `/api/calendar/plan`  | applies calendar changes for real                    |

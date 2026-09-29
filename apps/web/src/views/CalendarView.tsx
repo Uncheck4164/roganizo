@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { MapPin } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import type { EventClickArg, EventInput } from "@fullcalendar/core";
 import esLocale from "@fullcalendar/core/locales/es";
@@ -26,8 +27,21 @@ interface Popover {
   title: string;
   when: string;
   recurring: boolean;
+  location?: string;
+  description?: string;
   left: number;
   top: number;
+}
+
+/**
+ * Google keeps event descriptions as HTML when they were written in its editor
+ * (<br>, links, bold). Parsed into an inert document and read back as text, so
+ * nothing from the description ever runs or renders as markup.
+ */
+function plainText(html: string): string {
+  const withBreaks = html.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li)>/gi, "\n");
+  const text = new DOMParser().parseFromString(withBreaks, "text/html").body.textContent ?? "";
+  return text.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function todayRange(): { from: string; to: string } {
@@ -102,7 +116,7 @@ export default function CalendarView({
               title: e.title,
               start: e.start,
               end: e.end,
-              extendedProps: { recurring: e.recurring },
+              extendedProps: { recurring: e.recurring, location: e.location, description: e.description },
             }),
           ),
         );
@@ -234,8 +248,12 @@ export default function CalendarView({
     const wr = wrap.getBoundingClientRect();
     const r = arg.el.getBoundingClientRect();
     const left = Math.max(4, Math.min(r.left - wr.left, Math.max(4, wrap.clientWidth - 296)));
+    // Rough popover height, so it flips above the event instead of overflowing:
+    // a place adds a line, a description up to its scroll cap.
+    const props = arg.event.extendedProps;
+    const height = 150 + (props.location ? 30 : 0) + (props.description ? 160 : 0);
     let top = r.bottom - wr.top + 8;
-    if (top > wrap.clientHeight - 150) top = Math.max(4, r.top - wr.top - 148);
+    if (top > wrap.clientHeight - height) top = Math.max(4, r.top - wr.top - height + 2);
     const start = arg.event.start;
     const end = arg.event.end;
     let when = start
@@ -247,6 +265,10 @@ export default function CalendarView({
       title: arg.event.title,
       when,
       recurring: Boolean(arg.event.extendedProps.recurring),
+      location: arg.event.extendedProps.location as string | undefined,
+      description: arg.event.extendedProps.description
+        ? plainText(String(arg.event.extendedProps.description))
+        : undefined,
       left,
       top,
     });
@@ -501,6 +523,29 @@ export default function CalendarView({
               <div style={{ fontSize: "13px", color: "var(--faint)" }}>
                 {popover.recurring ? t("cal.recurring") : t("cal.once")}
               </div>
+              {popover.location && (
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "7px", fontSize: "14px" }}>
+                  <MapPin style={{ width: "15px", height: "15px", flex: "none", marginTop: "2px" }} />
+                  <span style={{ lineHeight: 1.4, overflowWrap: "anywhere" }}>{popover.location}</span>
+                </div>
+              )}
+              {popover.description && (
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "var(--muted)",
+                    lineHeight: 1.5,
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    maxHeight: "140px",
+                    overflowY: "auto",
+                    borderTop: "1px solid var(--line)",
+                    paddingTop: "8px",
+                  }}
+                >
+                  {popover.description}
+                </div>
+              )}
             </div>
           )}
         </div>

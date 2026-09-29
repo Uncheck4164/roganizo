@@ -63,7 +63,8 @@ export function describeAction(action: PlanAction): string {
     const verb = t(
       tool === "create_event" ? "planVerbCreate" : tool === "update_event" ? "planVerbUpdate" : "planVerbDelete",
     );
-    return `${icon} ${verb} ${title || t("planUntitled")}${time}${repeat}`;
+    const place = args.location ? ` · 📍 ${String(args.location)}` : "";
+    return `${icon} ${verb} ${title || t("planUntitled")}${time}${repeat}${place}`;
   }
 
   if (tool === "create_reminder") return `${icon} ${t("planVerbRemind")} ${title} — ${hhmm(args.fire_at)}`;

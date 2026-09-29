@@ -9,6 +9,8 @@ interface ApiReminder {
   id: number;
   message: string;
   fireAt: string;
+  /** Set once sent. The API keeps sent ones for a week so they do not vanish on firing. */
+  firedAt: string | null;
 }
 
 function fmtFireAt(iso: string, locale: string): string {
@@ -66,6 +68,57 @@ export default function TodosView() {
       filter === "high" ? taskPriority(t) === "Alta" : filter === "week" ? dueSoon(t.due) : true,
     );
   const done = all.filter((t) => t.completed);
+  const pendingReminders = (reminders.data ?? []).filter((r) => !r.firedAt);
+  const sentReminders = (reminders.data ?? []).filter((r) => r.firedAt);
+
+  const reminderSection = (label: string, list: ApiReminder[], sent: boolean) =>
+    list.length > 0 && (
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <span style={{ fontSize: "13px", color: "var(--muted)", paddingLeft: "4px" }}>{label}</span>
+        <div
+          className={sent ? undefined : "rg-panel"}
+          style={
+            sent
+              ? { borderRadius: "26px", padding: "6px 28px", background: "var(--chip)" }
+              : { ...panelStyle, padding: "6px 28px" }
+          }
+        >
+          {list.map((r) => (
+            <div
+              key={r.id}
+              className="rg-todo-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "18px 1fr auto",
+                gap: "20px",
+                padding: "20px 0",
+                borderBottom: "1px solid var(--line)",
+                alignItems: "center",
+                opacity: sent ? 0.6 : 1,
+              }}
+            >
+              <Bell
+                style={{ width: 16, height: 16, color: sent ? "var(--muted)" : "var(--accent)" }}
+                strokeWidth={2}
+              />
+              <span style={{ fontSize: "16px", lineHeight: 1.35 }}>{r.message}</span>
+              <span
+                style={{
+                  fontSize: "13px",
+                  background: "var(--chip)",
+                  borderRadius: "999px",
+                  padding: "6px 13px",
+                  color: "var(--btn-fg)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {fmtFireAt(r.fireAt, locale)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
 
   const prioColor: Record<string, string> = {
     Alta: "var(--warn)",
@@ -167,44 +220,8 @@ export default function TodosView() {
         })}
       </div>
 
-      {(reminders.data?.length ?? 0) > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <span style={{ fontSize: "13px", color: "var(--muted)", paddingLeft: "4px" }}>
-            {t("todos.reminders")}
-          </span>
-          <div className="rg-panel" style={{ ...panelStyle, padding: "6px 28px" }}>
-            {reminders.data!.map((r) => (
-              <div
-                key={r.id}
-                className="rg-todo-row"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "18px 1fr auto",
-                  gap: "20px",
-                  padding: "20px 0",
-                  borderBottom: "1px solid var(--line)",
-                  alignItems: "center",
-                }}
-              >
-                <Bell style={{ width: 16, height: 16, color: "var(--accent)" }} strokeWidth={2} />
-                <span style={{ fontSize: "16px", lineHeight: 1.35 }}>{r.message}</span>
-                <span
-                  style={{
-                    fontSize: "13px",
-                    background: "var(--chip)",
-                    borderRadius: "999px",
-                    padding: "6px 13px",
-                    color: "var(--btn-fg)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {fmtFireAt(r.fireAt, locale)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {reminderSection(t("todos.reminders"), pendingReminders, false)}
+      {reminderSection(t("todos.remindersSent"), sentReminders, true)}
 
       {done.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>

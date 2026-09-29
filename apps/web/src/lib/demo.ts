@@ -109,7 +109,7 @@ function eventsBetween(fromISO: string, toISO: string, lang: Lang): ApiEvent[] {
         start: localISO(cursor, s.s),
         end: localISO(cursor, s.e),
         recurring: true,
-        description: s.room ? roomLabel(s.room, lang) : undefined,
+        location: s.room ? roomLabel(s.room, lang) : undefined,
       });
     }
     cursor.setDate(cursor.getDate() + 1);
@@ -215,12 +215,14 @@ function notes(lang: Lang): ApiNote[] {
 function reminders(lang: Lang) {
   return lang === "es"
     ? [
-        { id: 1, message: "📞 Hablar con el profesor por la bibliografía", fireAt: daysFromNow(1) },
-        { id: 2, message: "📚 Prueba de Matemática — repasar antes", fireAt: daysFromNow(4) },
+        { id: 1, message: "📞 Hablar con el profesor por la bibliografía", fireAt: daysFromNow(1), firedAt: null },
+        { id: 2, message: "📚 Prueba de Matemática — repasar antes", fireAt: daysFromNow(4), firedAt: null },
+        { id: 3, message: "📝 Entregar el informe de laboratorio", fireAt: daysFromNow(-2), firedAt: daysFromNow(-2) },
       ]
     : [
-        { id: 1, message: "📞 Talk to the teacher about the reading list", fireAt: daysFromNow(1) },
-        { id: 2, message: "📚 Maths test — revise beforehand", fireAt: daysFromNow(4) },
+        { id: 1, message: "📞 Talk to the teacher about the reading list", fireAt: daysFromNow(1), firedAt: null },
+        { id: 2, message: "📚 Maths test — revise beforehand", fireAt: daysFromNow(4), firedAt: null },
+        { id: 3, message: "📝 Hand in the lab report", fireAt: daysFromNow(-2), firedAt: daysFromNow(-2) },
       ];
 }
 

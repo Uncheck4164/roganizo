@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { timingSafeEqual } from "node:crypto";
-import { desc, isNull } from "drizzle-orm";
+import { desc, isNotNull, isNull } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { db, schema } from "../db/index.js";
 import { config, isPasswordConfigured } from "../config.js";
@@ -69,16 +69,27 @@ apiRoutes.get("/api/notes", (c) =>
   c.json(db.select().from(schema.notes).orderBy(desc(schema.notes.updatedAt)).all()),
 );
 
-apiRoutes.get("/api/reminders", (c) =>
-  c.json(
-    db
-      .select()
-      .from(schema.reminders)
-      .where(isNull(schema.reminders.firedAt))
-      .orderBy(schema.reminders.fireAt)
-      .all(),
-  ),
-);
+/** Sent reminders stay visible this long, so one never vanishes the moment it fires. */
+const SENT_REMINDERS_DAYS = 7;
+
+// Pending first (soonest on top), then the ones sent lately (newest on top).
+apiRoutes.get("/api/reminders", (c) => {
+  const pending = db
+    .select()
+    .from(schema.reminders)
+    .where(isNull(schema.reminders.firedAt))
+    .orderBy(schema.reminders.fireAt)
+    .all();
+  const since = DateTime.now().minus({ days: SENT_REMINDERS_DAYS });
+  const sent = db
+    .select()
+    .from(schema.reminders)
+    .where(isNotNull(schema.reminders.firedAt))
+    .orderBy(desc(schema.reminders.fireAt))
+    .all()
+    .filter((r) => DateTime.fromISO(r.firedAt!) >= since);
+  return c.json([...pending, ...sent]);
+});
 
 apiRoutes.get("/api/stats", async (c) => {
   const weekOf = c.req.query("week"); // any date inside the target week

@@ -37,6 +37,7 @@ export const toolDefinitions = [
           start: { type: "string", description: "Inicio ISO 8601 hora local" },
           end: { type: "string", description: "Fin ISO 8601 hora local" },
           rrule: { type: "string", description: "Regla RRULE opcional para repetición" },
+          location: { type: "string", description: "Lugar (sala, dirección), si el usuario lo dice" },
           description: { type: "string" },
           allow_overlap: { type: "boolean", description: "Crear aunque haya conflicto" },
         },
@@ -58,6 +59,7 @@ export const toolDefinitions = [
           start: { type: "string" },
           end: { type: "string" },
           rrule: { type: "string" },
+          location: { type: "string" },
           description: { type: "string" },
         },
         required: ["event_id"],
@@ -521,6 +523,7 @@ async function runTool(
         startISO: String(args.start),
         endISO: String(args.end),
         rrule: args.rrule ? String(args.rrule) : undefined,
+        location: args.location ? String(args.location) : undefined,
         description: args.description ? String(args.description) : undefined,
       });
     }
@@ -542,6 +545,7 @@ async function runTool(
         startISO: args.start as string | undefined,
         endISO: args.end as string | undefined,
         rrule: args.rrule as string | undefined,
+        location: args.location as string | undefined,
         description: args.description as string | undefined,
       });
     }

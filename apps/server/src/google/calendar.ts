@@ -17,6 +17,8 @@ export interface EventSummary {
   recurring: boolean;
   /** Id of the parent series when this is an expanded instance of a recurrence. */
   seriesId?: string;
+  /** Free-text place ("Sala LC-48"): what Google shows right under the time. */
+  location?: string;
   description?: string;
 }
 
@@ -28,6 +30,7 @@ function toSummary(e: calendar_v3.Schema$Event): EventSummary {
     end: e.end?.dateTime ?? e.end?.date ?? "",
     recurring: Boolean(e.recurringEventId || e.recurrence),
     seriesId: e.recurringEventId ?? undefined,
+    location: e.location ?? undefined,
     description: e.description ?? undefined,
   };
 }
@@ -50,6 +53,7 @@ export interface CreateEventInput {
   endISO: string;
   /** e.g. "RRULE:FREQ=WEEKLY;BYDAY=TU" for a weekly repetition */
   rrule?: string;
+  location?: string;
   description?: string;
 }
 
@@ -70,6 +74,7 @@ export async function findConflicts(
 export async function createEvent(input: CreateEventInput): Promise<EventSummary> {
   const body: calendar_v3.Schema$Event = {
     summary: input.title,
+    location: input.location,
     description: input.description,
     start: { dateTime: DateTime.fromISO(input.startISO, { zone: TZ }).toISO()!, timeZone: TZ },
     end: { dateTime: DateTime.fromISO(input.endISO, { zone: TZ }).toISO()!, timeZone: TZ },
@@ -85,6 +90,7 @@ export async function updateEvent(
 ): Promise<EventSummary> {
   const body: calendar_v3.Schema$Event = {};
   if (patch.title !== undefined) body.summary = patch.title;
+  if (patch.location !== undefined) body.location = patch.location;
   if (patch.description !== undefined) body.description = patch.description;
   if (patch.startISO)
     body.start = { dateTime: DateTime.fromISO(patch.startISO, { zone: TZ }).toISO()!, timeZone: TZ };

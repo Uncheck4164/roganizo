@@ -103,7 +103,11 @@ function createServer(): McpServer {
 
   server.registerTool(
     "reminders",
-    { description: "Reminders that have not fired yet.", inputSchema: {} },
+    {
+      description:
+        "Pending reminders (firedAt null), then the ones sent in the last 7 days (firedAt set).",
+      inputSchema: {},
+    },
     async () => present("GET /api/reminders", await client.get("/api/reminders")),
   );
 
