@@ -111,6 +111,20 @@ export interface SettingsFieldDef {
   kind?: "text" | "time" | "select" | "datalist";
   options?: string[];
   placeholder?: string;
+  /** Shown only while LLM_PROVIDER has this value. */
+  provider?: LlmProvider;
+}
+
+export type LlmProvider = "openrouter" | "openai";
+
+/** The provider the form currently points at (saved or just picked). */
+export function activeProvider(value: string | undefined): LlmProvider {
+  return value === "openai" ? "openai" : "openrouter";
+}
+
+/** Of the two API keys, only the active provider's one is required. */
+export function apiKeyFor(provider: LlmProvider): string {
+  return provider === "openai" ? "OPENAI_API_KEY" : "OPENROUTER_API_KEY";
 }
 
 export const GROUP_ORDER: SettingsGroupKey[] = [
@@ -151,20 +165,46 @@ export const SETTINGS_FIELDS: SettingsFieldDef[] = [
   { key: "TELEGRAM_BOT_TOKEN", group: "telegram" },
   { key: "TELEGRAM_ALLOWED_USER_ID", group: "telegram" },
   { key: "CALLMEBOT_USER", group: "telegram", placeholder: "@usuario" },
-  { key: "OPENROUTER_API_KEY", group: "model" },
-  { key: "OPENROUTER_MODEL", group: "model" },
-  { key: "OPENROUTER_MODEL_STRONG", group: "model", placeholder: "anthropic/claude-sonnet-5" },
+  { key: "LLM_PROVIDER", group: "model", kind: "select", options: ["openrouter", "openai"] },
+  { key: "OPENAI_API_KEY", group: "model", provider: "openai" },
+  {
+    key: "OPENAI_MODEL",
+    group: "model",
+    provider: "openai",
+    kind: "datalist",
+    options: ["gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-astra"],
+  },
+  {
+    key: "OPENAI_MODEL_STRONG",
+    group: "model",
+    provider: "openai",
+    kind: "datalist",
+    options: ["gpt-6.1-sol", "gpt-6-astra"],
+    placeholder: "gpt-6.1-sol",
+  },
+  {
+    key: "OPENAI_REASONING_EFFORT",
+    group: "model",
+    provider: "openai",
+    kind: "select",
+    options: ["none", "low", "medium", "high"],
+  },
+  { key: "OPENROUTER_API_KEY", group: "model", provider: "openrouter" },
+  { key: "OPENROUTER_MODEL", group: "model", provider: "openrouter" },
+  { key: "OPENROUTER_MODEL_STRONG", group: "model", provider: "openrouter", placeholder: "anthropic/claude-sonnet-5" },
   {
     key: "OPENROUTER_QUALITY_FLOOR",
     group: "model",
+    provider: "openrouter",
     kind: "select",
     options: ["any", "6bit", "8bit", "16bit"],
   },
-  { key: "OPENROUTER_MAX_PRICE", group: "model", placeholder: "0.2,0.6" },
-  { key: "OPENROUTER_PROVIDER_ORDER", group: "model", placeholder: "deepinfra,baidu" },
+  { key: "OPENROUTER_MAX_PRICE", group: "model", provider: "openrouter", placeholder: "0.2,0.6" },
+  { key: "OPENROUTER_PROVIDER_ORDER", group: "model", provider: "openrouter", placeholder: "deepinfra,baidu" },
   {
     key: "OPENROUTER_SORT",
     group: "model",
+    provider: "openrouter",
     kind: "select",
     options: ["auto", "price", "throughput", "latency"],
   },
@@ -221,16 +261,31 @@ const HELP_ES: Partial<Record<SettingsGroupKey, HelpDoc>> = {
   model: {
     steps: [
       {
-        text: "Entrá a openrouter.ai/keys, creá una key nueva y copiala. Se ve una sola vez.",
+        text: "Elegí el proveedor. OpenAI usa tu cuenta de platform.openai.com directo; OpenRouter da acceso a cientos de modelos de otros proveedores con una sola key. Solo se muestran los campos del que elijas.",
+      },
+      {
+        text: "OpenAI: entrá a platform.openai.com/api-keys, creá una key y copiala (se ve una sola vez). La cuenta necesita saldo cargado en Billing.",
+        links: [
+          { label: "API keys de OpenAI", url: "https://platform.openai.com/api-keys" },
+          { label: "Billing", url: "https://platform.openai.com/settings/organization/billing" },
+        ],
+      },
+      {
+        text: "OpenAI: gpt-6-luna es el más rápido y barato, y alcanza para el día a día. Como refuerzo conviene gpt-6.1-sol. Si ponés gpt-6.1-sol o gpt-6-astra como modelo base, subí el razonamiento a low o más: no aceptan none.",
+        code: "gpt-6-luna",
+        links: [{ label: "Modelos de OpenAI", url: "https://developers.openai.com/api/docs/models" }],
+      },
+      {
+        text: "OpenRouter: entrá a openrouter.ai/keys, creá una key nueva y copiala. Se ve una sola vez.",
         links: [{ label: "openrouter.ai/keys", url: "https://openrouter.ai/keys" }],
       },
       {
-        text: "Elegí el modelo en el catálogo y pegá su identificador completo, con la barra incluida.",
+        text: "OpenRouter: elegí el modelo en el catálogo y pegá su identificador completo, con la barra incluida.",
         code: "deepseek/deepseek-chat",
         links: [{ label: "openrouter.ai/models", url: "https://openrouter.ai/models" }],
       },
       {
-        text: "El orden de providers es una lista separada por comas con los proveedores que preferís. Si ninguno responde, entra el criterio de fallback: price busca el más barato, throughput el más rápido y latency el que menos tarda en arrancar.",
+        text: "OpenRouter: el orden de providers es una lista separada por comas con los proveedores que preferís. Si ninguno responde, entra el criterio de fallback: price busca el más barato, throughput el más rápido y latency el que menos tarda en arrancar.",
         links: [{ label: "Routing de providers", url: "https://openrouter.ai/docs/features/provider-routing" }],
       },
     ],
@@ -285,16 +340,31 @@ const HELP_EN: Partial<Record<SettingsGroupKey, HelpDoc>> = {
   model: {
     steps: [
       {
-        text: "Go to openrouter.ai/keys, create a new key and copy it. It is shown only once.",
+        text: "Pick the provider. OpenAI uses your platform.openai.com account directly; OpenRouter gives you hundreds of models from other providers behind a single key. Only the fields of the one you pick are shown.",
+      },
+      {
+        text: "OpenAI: go to platform.openai.com/api-keys, create a key and copy it (it is shown only once). The account needs credit loaded under Billing.",
+        links: [
+          { label: "OpenAI API keys", url: "https://platform.openai.com/api-keys" },
+          { label: "Billing", url: "https://platform.openai.com/settings/organization/billing" },
+        ],
+      },
+      {
+        text: "OpenAI: gpt-6-luna is the fastest and cheapest, and enough for everyday use. gpt-6.1-sol makes a good backup model. If you set gpt-6.1-sol or gpt-6-astra as the base model, raise reasoning to low or above: they do not accept none.",
+        code: "gpt-6-luna",
+        links: [{ label: "OpenAI models", url: "https://developers.openai.com/api/docs/models" }],
+      },
+      {
+        text: "OpenRouter: go to openrouter.ai/keys, create a new key and copy it. It is shown only once.",
         links: [{ label: "openrouter.ai/keys", url: "https://openrouter.ai/keys" }],
       },
       {
-        text: "Pick the model from the catalogue and paste its full identifier, slash included.",
+        text: "OpenRouter: pick the model from the catalogue and paste its full identifier, slash included.",
         code: "deepseek/deepseek-chat",
         links: [{ label: "openrouter.ai/models", url: "https://openrouter.ai/models" }],
       },
       {
-        text: "The provider order is a comma-separated list of the providers you prefer. If none of them answers, the fallback criterion kicks in: price goes for the cheapest, throughput for the fastest and latency for the quickest to start.",
+        text: "OpenRouter: the provider order is a comma-separated list of the providers you prefer. If none of them answers, the fallback criterion kicks in: price goes for the cheapest, throughput for the fastest and latency for the quickest to start.",
         links: [{ label: "Provider routing", url: "https://openrouter.ai/docs/features/provider-routing" }],
       },
     ],

@@ -89,10 +89,10 @@ const es = {
   dupScanning: "Revisando tu calendario...",
 
   // Diagnostics
-  diagRunning: "Probando OpenRouter...",
-  diagOk: "✅ OpenRouter responde\nModelo: {model}\nProveedor: {provider}\nLatencia: {latency} ms{cost}",
+  diagRunning: "Probando {provider}...",
+  diagOk: "✅ {llm} responde\nModelo: {model}\nProveedor: {provider}\nLatencia: {latency} ms{cost}",
   diagCost: "\nCosto de la prueba: ${cost}",
-  diagFail: "❌ OpenRouter falló\nModelo: {model}\n{error}",
+  diagFail: "❌ {llm} falló\nModelo: {model}\n{error}",
   diagRouting: "Ruteo: {routing}",
   diagStrongOff: "Refuerzo: sin configurar (todo lo resuelve el modelo base)",
   diagStrongOk: "Refuerzo: {model} ✅ ({latency} ms) — solo entra cuando el base falla",
@@ -196,10 +196,10 @@ const en: Record<MessageKey, string> = {
     "🧹 I found {groups} repeated event(s) in the next {days} days. Here's a cleanup that leaves one copy of each.",
   dupScanning: "Scanning your calendar...",
 
-  diagRunning: "Testing OpenRouter...",
-  diagOk: "✅ OpenRouter is responding\nModel: {model}\nProvider: {provider}\nLatency: {latency} ms{cost}",
+  diagRunning: "Testing {provider}...",
+  diagOk: "✅ {llm} is responding\nModel: {model}\nProvider: {provider}\nLatency: {latency} ms{cost}",
   diagCost: "\nCost of this test: ${cost}",
-  diagFail: "❌ OpenRouter failed\nModel: {model}\n{error}",
+  diagFail: "❌ {llm} failed\nModel: {model}\n{error}",
   diagRouting: "Routing: {routing}",
   diagStrongOff: "Backup model: not configured (the base model handles everything)",
   diagStrongOk: "Backup model: {model} ✅ ({latency} ms) — it only steps in when the base one fails",

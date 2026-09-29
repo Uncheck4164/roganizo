@@ -1,4 +1,12 @@
 import { config } from "../config.js";
+import {
+  isRetryableStatus,
+  LlmError,
+  normalizeToolCalls,
+  withRetries,
+  type ChatMessage,
+  type ModelReply,
+} from "./llm.js";
 
 /**
  * Hardened OpenRouter client.
@@ -10,64 +18,15 @@ import { config } from "../config.js";
  * "OpenRouter returned an empty response".
  */
 
-export interface ChatMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
-}
-
-export interface ToolCall {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-}
-
-export interface ModelReply {
-  message: ChatMessage;
-  finishReason: string | null;
-  /** Provider that actually served the request (OpenRouter routes per call). */
-  provider?: string;
-  usage?: { prompt: number; completion: number; cost?: number };
-}
-
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const REQUEST_TIMEOUT_MS = 90_000;
-const MAX_ATTEMPTS = 3;
-const BASE_BACKOFF_MS = 1_000;
-const MAX_BACKOFF_MS = 20_000;
 /** Cap per reply. Tool-call arguments are small; long prose is not wanted here. */
 const MAX_TOKENS = 4_000;
-
-/** Failure with a message meant for the user, not a raw stack trace. */
-export class OpenRouterError extends Error {
-  constructor(
-    message: string,
-    readonly userHint: string,
-    readonly retryable: boolean,
-    readonly status?: number,
-    /** Seconds requested by the server through the Retry-After header. */
-    readonly retryAfter?: number,
-  ) {
-    super(message);
-    this.name = "OpenRouterError";
-  }
-
-  /** The routing filters left OpenRouter with no endpoint to send this to. */
-  get noEndpoints(): boolean {
-    return this.status === 404 || /no (?:allowed )?(?:endpoints?|providers?)/i.test(this.message);
-  }
-}
 
 interface ApiError {
   code?: number | string;
   message?: string;
   metadata?: Record<string, unknown>;
-}
-
-/** Status codes worth trying again: transient by definition. */
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 409 || status === 429 || status >= 500;
 }
 
 function hintFor(status: number | undefined, message: string): string {
@@ -90,16 +49,6 @@ function hintFor(status: number | undefined, message: string): string {
   }
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-function backoffMs(attempt: number, retryAfterSeconds: number | undefined): number {
-  if (retryAfterSeconds && retryAfterSeconds > 0) {
-    return Math.min(retryAfterSeconds * 1000, MAX_BACKOFF_MS);
-  }
-  const exponential = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
-  return exponential + Math.random() * 250; // jitter
-}
-
 /** Some providers return content as an array of parts instead of a string. */
 function normalizeContent(content: unknown): string | null {
   if (typeof content === "string") return content;
@@ -111,37 +60,6 @@ function normalizeContent(content: unknown): string | null {
     return text || null;
   }
   return null;
-}
-
-/**
- * Drops tool calls the loop could not execute anyway (missing name, duplicated
- * id). A malformed call left in the history breaks every later request, because
- * the API demands one tool result per tool call.
- */
-function normalizeToolCalls(raw: unknown): ToolCall[] | undefined {
-  if (!Array.isArray(raw) || raw.length === 0) return undefined;
-  const seen = new Set<string>();
-  const calls: ToolCall[] = [];
-  for (const [i, item] of raw.entries()) {
-    const call = item as Partial<ToolCall> & { function?: { name?: string; arguments?: unknown } };
-    const name = call.function?.name;
-    if (!name) continue;
-    const id = call.id && !seen.has(call.id) ? call.id : `call_${i}_${name}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    calls.push({
-      id,
-      type: "function",
-      function: {
-        name,
-        arguments:
-          typeof call.function?.arguments === "string"
-            ? call.function.arguments
-            : JSON.stringify(call.function?.arguments ?? {}),
-      },
-    });
-  }
-  return calls.length ? calls : undefined;
 }
 
 /**
@@ -217,11 +135,11 @@ export function routingSummary(): string {
   return `sort=${config.OPENROUTER_SORT} · ${floor} · ${ceiling} · providers=${config.OPENROUTER_PROVIDER_ORDER || "auto"}`;
 }
 
-async function singleCall(
+export async function singleCall(
   messages: ChatMessage[],
   tools: unknown,
   model: string,
-  relaxed: boolean,
+  relaxed = false,
 ): Promise<ModelReply> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -250,7 +168,7 @@ async function singleCall(
     });
   } catch (err) {
     const aborted = (err as Error).name === "AbortError";
-    throw new OpenRouterError(
+    throw new LlmError(
       aborted ? `timeout after ${REQUEST_TIMEOUT_MS}ms` : `network error: ${(err as Error).message}`,
       aborted
         ? "El modelo no respondió a tiempo."
@@ -273,7 +191,7 @@ async function singleCall(
   try {
     body = JSON.parse(bodyText) as typeof body;
   } catch {
-    throw new OpenRouterError(
+    throw new LlmError(
       `non-JSON response (${res.status}): ${bodyText.slice(0, 200)}`,
       "OpenRouter devolvió una respuesta que no entiendo.",
       isRetryableStatus(res.status),
@@ -287,7 +205,7 @@ async function singleCall(
   if (!res.ok || apiError) {
     const status = res.ok ? Number(apiError?.code) || res.status : res.status;
     const message = apiError?.message ?? bodyText.slice(0, 300);
-    throw new OpenRouterError(
+    throw new LlmError(
       `OpenRouter ${status}: ${message}`,
       hintFor(status, message),
       isRetryableStatus(status),
@@ -299,14 +217,22 @@ async function singleCall(
   const choice = body.choices?.[0];
   const raw = choice?.message;
   if (!raw) {
-    throw new OpenRouterError(
+    throw new LlmError(
       `empty response: ${bodyText.slice(0, 200)}`,
       "El modelo devolvió una respuesta vacía.",
       true,
     );
   }
 
-  const toolCalls = normalizeToolCalls(raw.tool_calls);
+  const toolCalls = normalizeToolCalls(
+    Array.isArray(raw.tool_calls)
+      ? raw.tool_calls.map((c: { id?: string; function?: { name?: string; arguments?: unknown } }) => ({
+          id: c?.id,
+          name: c?.function?.name,
+          arguments: c?.function?.arguments,
+        }))
+      : [],
+  );
   return {
     message: {
       role: "assistant",
@@ -325,89 +251,18 @@ async function singleCall(
   };
 }
 
-/**
- * One model turn. `model` defaults to the cheap one; the agent passes the
- * reinforcement model once a turn has shown the cheap one cannot handle it.
- */
-export async function callModel(
-  messages: ChatMessage[],
-  tools: unknown,
-  model: string = config.OPENROUTER_MODEL,
-): Promise<ModelReply> {
+/** One model turn, with a relaxed second chance when the routing floor matches nothing. */
+export async function callModel(messages: ChatMessage[], tools: unknown, model: string): Promise<ModelReply> {
   try {
-    return await withRetries(messages, tools, model, false);
+    return await withRetries(model, () => singleCall(messages, tools, model, false));
   } catch (err) {
     // The quality floor (or the price ceiling) matched no endpoint at all.
     // Answering from a cheaper one beats not answering, but the log has to say
     // it, because it means the floor and the model do not fit each other.
-    if (err instanceof OpenRouterError && err.noEndpoints && hasRoutingFilters(model)) {
+    if (err instanceof LlmError && err.noEndpoints && hasRoutingFilters(model)) {
       console.warn(`[llm] no endpoint matches the routing floor (${err.message}); retrying without it`);
-      return withRetries(messages, tools, model, true);
+      return withRetries(model, () => singleCall(messages, tools, model, true));
     }
     throw err;
-  }
-}
-
-/** Transient failures only: the caller decides about the routing ones. */
-async function withRetries(
-  messages: ChatMessage[],
-  tools: unknown,
-  model: string,
-  relaxed: boolean,
-): Promise<ModelReply> {
-  let last: OpenRouterError | undefined;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    try {
-      const started = Date.now();
-      const reply = await singleCall(messages, tools, model, relaxed);
-      const { usage } = reply;
-      console.log(
-        `[llm] ${model} via ${reply.provider ?? "?"} in ${Date.now() - started}ms` +
-          (usage ? ` — ${usage.prompt}+${usage.completion} tok` : "") +
-          (usage?.cost !== undefined ? ` — $${usage.cost.toFixed(6)}` : "") +
-          ` — finish=${reply.finishReason ?? "?"}`,
-      );
-      return reply;
-    } catch (err) {
-      if (!(err instanceof OpenRouterError) || !err.retryable) throw err;
-      last = err;
-      if (attempt < MAX_ATTEMPTS - 1) {
-        const wait = backoffMs(attempt, err.retryAfter);
-        console.warn(`[llm] attempt ${attempt + 1}/${MAX_ATTEMPTS} failed (${err.message}); retrying in ${Math.round(wait)}ms`);
-        await sleep(wait);
-      }
-    }
-  }
-  throw last ?? new OpenRouterError("unknown failure", "Fallo desconocido llamando al modelo.", false);
-}
-
-export interface DiagnosticsResult {
-  ok: boolean;
-  model: string;
-  provider?: string;
-  latencyMs: number;
-  cost?: number;
-  error?: string;
-}
-
-/** Minimal round trip used by /diag: proves key, model and routing all work. */
-export async function checkModel(model: string = config.OPENROUTER_MODEL): Promise<DiagnosticsResult> {
-  const started = Date.now();
-  try {
-    const reply = await singleCall([{ role: "user", content: "ping" }], undefined, model, false);
-    return {
-      ok: true,
-      model,
-      provider: reply.provider,
-      latencyMs: Date.now() - started,
-      cost: reply.usage?.cost,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      model,
-      latencyMs: Date.now() - started,
-      error: err instanceof OpenRouterError ? err.userHint : (err as Error).message,
-    };
   }
 }

@@ -1,9 +1,8 @@
 import { desc, eq, inArray } from "drizzle-orm";
-import { config } from "../config.js";
 import { db, schema } from "../db/index.js";
 import { t } from "../i18n.js";
 import { systemPrompt } from "./prompt.js";
-import { callModel, OpenRouterError, type ChatMessage } from "./openrouter.js";
+import { baseModel, callModel, LlmError, strongModel, type ChatMessage } from "./llm.js";
 import {
   describeAction,
   hasErrors,
@@ -64,7 +63,7 @@ export const CLAIMS_CARD =
 export const PROMISES_ACTION =
   /(d[eé]jame|d[eé]me|dame un|permíteme|voy a|ir[eé]|ahora(?: mismo)?|enseguida|en un momento|un segundo|primero|let me|i'?ll|i am going to|i'm going to)\b[^.!?\n]{0,40}?\b(revis|verific|busc|mir|consult|chequ|analiz|fij|comprob|ech[ao] un|check|look|review|take a look)/i;
 
-async function callOpenRouter(messages: ChatMessage[], model?: string) {
+async function callLlm(messages: ChatMessage[], model?: string) {
   const reply = await callModel(messages, toolDefinitions, model);
   return reply.message;
 }
@@ -235,8 +234,8 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
   // turns that were going to fail anyway. Empty setting = never escalate.
   let escalatedTo: string | null = null;
   const escalate = (why: string) => {
-    const strong = config.OPENROUTER_MODEL_STRONG;
-    if (!strong || escalatedTo || strong === config.OPENROUTER_MODEL) return;
+    const strong = strongModel();
+    if (!strong || escalatedTo || strong === baseModel()) return;
     escalatedTo = strong;
     console.warn(`[agent] escalating to ${strong}: ${why}`);
   };
@@ -248,7 +247,7 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
   let validatedIssues: PlanIssue[] = [];
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const msg = await callOpenRouter(messages, escalatedTo ?? undefined);
+    const msg = await callLlm(messages, escalatedTo ?? undefined);
     modelCalls++;
     messages.push(msg);
     // Only tool calls are persisted as they happen: they must stay paired with
@@ -407,11 +406,11 @@ export async function runAgent(userMessage: string): Promise<AgentResult> {
   return { text, pending };
 }
 
-export { OpenRouterError };
+export { LlmError };
 
 /** Turns an agent failure into something the user can act on. */
 export function describeAgentError(err: unknown): string {
-  if (err instanceof OpenRouterError) return t("agentError", { message: err.userHint });
+  if (err instanceof LlmError) return t("agentError", { message: err.userHint });
   return t("agentError", { message: (err as Error).message });
 }
 

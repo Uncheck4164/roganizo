@@ -6,7 +6,7 @@ import * as calendar from "../../google/calendar.js";
 import * as gtasks from "../../google/tasks.js";
 import type { PlanAction } from "../plan.js";
 
-/** Definitions in the OpenAI tools format (what OpenRouter expects). */
+/** Definitions in the Chat Completions tools format; the OpenAI client flattens them for Responses. */
 export const toolDefinitions = [
   {
     type: "function",

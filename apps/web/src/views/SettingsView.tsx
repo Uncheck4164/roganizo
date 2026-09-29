@@ -5,6 +5,8 @@ import { category } from "../lib/colors";
 import { panelStyle, type Theme } from "../lib/theme";
 import { useI18n, type Lang, type TKey } from "../lib/i18n";
 import {
+  activeProvider,
+  apiKeyFor,
   applySettings,
   fetchSettings,
   FIELD_BY_KEY,
@@ -202,6 +204,15 @@ export default function SettingsView({
     }
   };
 
+  // Rows of the provider that is not selected stay out of view and out of the
+  // "missing" count; the active one's API key becomes required as soon as it is
+  // picked, before the save that would make the server say so.
+  const provider = activeProvider(currentValue("LLM_PROVIDER"));
+  const visibleRows = (rows: Row[]): Row[] =>
+    rows
+      .filter((r) => !r.def.provider || r.def.provider === provider)
+      .map((r) => (r.key === apiKeyFor(provider) ? { ...r, meta: { ...r.meta, required: true } } : r));
+
   const missingLeft = missing.filter((key) => !meta?.[key]?.configured && !isDirty(key));
 
   return (
@@ -258,7 +269,8 @@ export default function SettingsView({
         <div style={{ fontSize: "14px", color: "var(--warn)" }}>{t("set.loadError")}</div>
       )}
 
-      {groups.map(({ group, rows }) => {
+      {groups.map(({ group, rows: allRows }) => {
+        const rows = visibleRows(allRows);
         const help = helpFor(group, lang);
         const notConfigured = rows.filter(
           (r) => r.meta.required && !r.meta.configured && !r.meta.envOnly,
